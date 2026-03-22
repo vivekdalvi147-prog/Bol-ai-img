@@ -2,7 +2,6 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
-import fetch from "node-fetch";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,7 +20,7 @@ async function startServer() {
       const apiKey = process.env.VIVEK_AI_BOL_IMG;
 
       if (!apiKey) {
-        return res.status(500).json({ error: "API Key missing (VIVEK_AI_BOL_IMG)" });
+        return res.status(400).json({ error: "API Key missing (VIVEK_AI_BOL_IMG). Please add it in AI Studio Secrets." });
       }
 
       const baseUrl = 'https://api-inference.modelscope.ai/';
@@ -30,7 +29,7 @@ async function startServer() {
         "Content-Type": "application/json",
       };
 
-      // 1. Image Generation Task सुरू करणे
+      // 1. Image Generation Task
       const response = await fetch(`${baseUrl}v1/images/generations`, {
         method: 'POST',
         headers: { ...commonHeaders, "X-ModelScope-Async-Mode": "true" },
@@ -42,15 +41,19 @@ async function startServer() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`ModelScope API Error: ${errorText}`);
+        return res.status(response.status).json({ error: `ModelScope API Error: ${errorText}` });
       }
 
       const initialData = await response.json() as any;
       const taskId = initialData.task_id;
 
-      // 2. Polling (Task पूर्ण होण्याची वाट पाहणे)
+      if (!taskId) {
+        return res.status(500).json({ error: "Failed to get task_id from ModelScope." });
+      }
+
+      // 2. Polling
       let imageUrl = null;
-      const maxAttempts = 12;
+      const maxAttempts = 15;
       
       for (let i = 0; i < maxAttempts; i++) {
         await new Promise(resolve => setTimeout(resolve, 2000));

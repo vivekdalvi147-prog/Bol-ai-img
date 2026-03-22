@@ -47,7 +47,14 @@ Style to emulate: `;
         body: JSON.stringify({ prompt: finalPrompt }),
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Raw response:", text);
+        throw new Error(`Server Error: ${text.substring(0, 50)}... Make sure the server is running.`);
+      }
       
       if (!response.ok) {
         throw new Error(data.error || 'Failed to generate image');
