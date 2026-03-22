@@ -56,12 +56,21 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
 
     const ai = new GoogleGenAI({ apiKey });
     
+    const upgradeInstruction = `You are an elite AI image generation prompt engineer. Your sole purpose is to upgrade the user's basic prompt into a highly detailed, cinematic, and visually striking masterpiece prompt. 
+
+RULES:
+1. If the prompt is in another language (like Hindi), translate it to English first.
+2. Structure the prompt clearly: Subject, Medium, Style, Lighting, Color Palette, Camera Angle, and Composition.
+3. Add specific, high-end details (e.g., 'volumetric lighting', 'cinematic composition', 'hyper-realistic', '8k resolution', 'Unreal Engine 5 render', 'intricate details').
+4. Ensure the final prompt is highly descriptive, evocative, and under 2000 characters.
+5. ONLY output the upgraded prompt text. Do NOT include any conversational filler, explanations, or introductory text.
+
+USER PROMPT TO UPGRADE:
+"${prompt}"`;
+
     const response = await ai.models.generateContent({
       model: "gemma-3-27b-it", // Using Gemma 3 27B as requested
-      contents: prompt,
-      config: {
-        systemInstruction: "You are an elite AI image generation prompt engineer. Your sole purpose is to upgrade the user's basic prompt into a highly detailed, cinematic, and visually striking masterpiece prompt. \n\nRULES:\n1. If the prompt is in another language (like Hindi), translate it to English first.\n2. Structure the prompt clearly: Subject, Medium, Style, Lighting, Color Palette, Camera Angle, and Composition.\n3. Add specific, high-end details (e.g., 'volumetric lighting', 'cinematic composition', 'hyper-realistic', '8k resolution', 'Unreal Engine 5 render', 'intricate details').\n4. Ensure the final prompt is highly descriptive, evocative, and under 2000 characters.\n5. ONLY output the upgraded prompt text. Do NOT include any conversational filler, explanations, or introductory text (like 'Here is the upgraded prompt:').",
-      }
+      contents: upgradeInstruction
     });
 
     res.json({ enhancedPrompt: response.text });
