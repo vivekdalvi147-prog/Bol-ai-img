@@ -57,10 +57,10 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
     const ai = new GoogleGenAI({ apiKey });
     
     const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview", // Using this as a proxy for Gemma 3 27B as requested
+      model: "gemma-3-27b-it", // Using Gemma 3 27B as requested
       contents: prompt,
       config: {
-        systemInstruction: "Upgrade the image generation prompt provided by the user. Translate it to English if it is in another language. Make it highly detailed, descriptive, and visually striking by adding details about lighting, camera angle, atmosphere, and style. Keep the final prompt under 2000 characters. ONLY output the upgraded prompt, nothing else.",
+        systemInstruction: "You are an elite AI image generation prompt engineer. Your sole purpose is to upgrade the user's basic prompt into a highly detailed, cinematic, and visually striking masterpiece prompt. \n\nRULES:\n1. If the prompt is in another language (like Hindi), translate it to English first.\n2. Structure the prompt clearly: Subject, Medium, Style, Lighting, Color Palette, Camera Angle, and Composition.\n3. Add specific, high-end details (e.g., 'volumetric lighting', 'cinematic composition', 'hyper-realistic', '8k resolution', 'Unreal Engine 5 render', 'intricate details').\n4. Ensure the final prompt is highly descriptive, evocative, and under 2000 characters.\n5. ONLY output the upgraded prompt text. Do NOT include any conversational filler, explanations, or introductory text (like 'Here is the upgraded prompt:').",
       }
     });
 
