@@ -57,10 +57,50 @@ Style to emulate: `;
       }
       
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate image');
+        throw new Error(data.error || 'Failed to start image generation');
       }
 
-      setGeneratedImage(data.image_url);
+      const taskId = data.task_id;
+      if (!taskId) {
+        throw new Error('No task ID returned from server.');
+      }
+
+      // Poll for status
+      let isComplete = false;
+      let attempts = 0;
+      const maxAttempts = 30; // 30 * 2s = 60 seconds max
+
+      while (!isComplete && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+
+        const statusRes = await fetch(`/api/tasks/${taskId}`);
+        if (!statusRes.ok) continue;
+
+        let statusData;
+        try {
+          statusData = await statusRes.json();
+        } catch (e) {
+          console.error("Failed to parse status response:", e);
+          continue;
+        }
+        
+        if (statusData.task_status === "SUCCEED") {
+          if (statusData.output_images && statusData.output_images.length > 0) {
+            setGeneratedImage(statusData.output_images[0]);
+            isComplete = true;
+          } else {
+            throw new Error("ModelScope succeeded but returned no images.");
+          }
+        } else if (statusData.task_status === "FAILED") {
+          throw new Error("ModelScope failed to generate image.");
+        }
+      }
+
+      if (!isComplete) {
+        throw new Error("Generation Timeout. Please try again.");
+      }
+
     } catch (err: any) {
       setError(err.message);
     } finally {

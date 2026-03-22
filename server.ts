@@ -12,7 +12,11 @@ async function startServer() {
 
   app.use(express.json());
 
-  // API Route for Image Generation
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  // API Route for Image Generation (Start Task)
   app.post("/api/generate", async (req, res) => {
     try {
       const { prompt } = req.body;
@@ -51,37 +55,43 @@ async function startServer() {
         return res.status(500).json({ error: "Failed to get task_id from ModelScope." });
       }
 
-      // 2. Polling
-      let imageUrl = null;
-      const maxAttempts = 15;
-      
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const resultResponse = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
-          method: 'GET',
-          headers: { ...commonHeaders, "X-ModelScope-Task-Type": "image_generation" },
-        });
-
-        if (!resultResponse.ok) continue;
-
-        const data = await resultResponse.json() as any;
-
-        if (data.task_status === "SUCCEED") {
-          imageUrl = data.output_images[0];
-          break;
-        } else if (data.task_status === "FAILED") {
-          return res.status(500).json({ error: "ModelScope logic failed to generate image." });
-        }
-      }
-
-      if (imageUrl) {
-        res.json({ image_url: imageUrl });
-      } else {
-        res.status(504).json({ error: "Generation Timeout. Please try again." });
-      }
+      res.json({ task_id: taskId });
     } catch (error: any) {
       console.error("Generation Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // API Route to Check Task Status
+  app.get("/api/tasks/:taskId", async (req, res) => {
+    try {
+      const { taskId } = req.params;
+      const apiKey = process.env.VIVEK_AI_BOL_IMG;
+
+      if (!apiKey) {
+        return res.status(400).json({ error: "API Key missing." });
+      }
+
+      const baseUrl = 'https://api-inference.modelscope.ai/';
+      const commonHeaders = {
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      };
+
+      const resultResponse = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
+        method: 'GET',
+        headers: { ...commonHeaders, "X-ModelScope-Task-Type": "image_generation" },
+      });
+
+      if (!resultResponse.ok) {
+        const errorText = await resultResponse.text();
+        return res.status(resultResponse.status).json({ error: `ModelScope API Error: ${errorText}` });
+      }
+
+      const data = await resultResponse.json() as any;
+      res.json(data);
+    } catch (error: any) {
+      console.error("Task Check Error:", error);
       res.status(500).json({ error: error.message });
     }
   });
