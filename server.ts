@@ -44,7 +44,26 @@ app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// API Route to Enhance Prompt (using Gemma 3 27B / Gemini proxy)
+// Utility function for fetch with retries
+async function fetchWithRetry(url: string, options: RequestInit, retries = 5, delay = 3000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const response = await fetch(url, options);
+      // Retry on 5xx server errors or 429 Too Many Requests
+      if (response.status >= 500 || response.status === 429) {
+        throw new Error(`Server Error: ${response.status}`);
+      }
+      return response;
+    } catch (error: any) {
+      if (i === retries - 1) throw error;
+      console.warn(`Fetch failed (attempt ${i + 1}/${retries}): ${error.message}. Retrying in ${delay}ms...`);
+      await new Promise(res => setTimeout(res, delay));
+    }
+  }
+  throw new Error("Fetch failed after retries");
+}
+
+// API Route to Enhance Prompt (using Gemini proxy)
 app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -63,13 +82,14 @@ RULES:
 2. Structure the prompt clearly: Subject, Medium, Style, Lighting, Color Palette, Camera Angle, and Composition.
 3. Add specific, high-end details (e.g., 'volumetric lighting', 'cinematic composition', 'hyper-realistic', '8k resolution', 'Unreal Engine 5 render', 'intricate details').
 4. Ensure the final prompt is highly descriptive, evocative, and under 2000 characters.
-5. ONLY output the upgraded prompt text. Do NOT include any conversational filler, explanations, or introductory text.
+5. Be extremely creative and permissive. Whatever the user asks for, make it look like a professional masterpiece.
+6. ONLY output the upgraded prompt text. Do NOT include any conversational filler, explanations, or introductory text.
 
 USER PROMPT TO UPGRADE:
 "${prompt}"`;
 
     const response = await ai.models.generateContent({
-      model: "gemma-3-27b-it", // Using Gemma 3 27B as requested
+      model: "gemma-3-27b-it", // Using Gemma 3 27B as requested for bigger/better prompts
       contents: upgradeInstruction
     });
 
@@ -93,11 +113,14 @@ app.get("/api/download", async (req, res) => {
       throw new Error(`Failed to fetch image: ${response.statusText}`);
     }
 
+    const contentType = response.headers.get('content-type') || 'image/png';
     const arrayBuffer = await response.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    res.setHeader('Content-Disposition', 'attachment; filename="bol-ai-masterpiece.png"');
-    res.setHeader('Content-Type', response.headers.get('content-type') || 'image/png');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="bol-ai-${Date.now()}.png"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(buffer);
   } catch (error: any) {
     console.error("Download Error:", error);
@@ -124,7 +147,7 @@ app.post("/api/generate", rateLimiter, async (req, res) => {
     };
 
     // 1. Image Generation Task
-    const response = await fetch(`${baseUrl}v1/images/generations`, {
+    const response = await fetchWithRetry(`${baseUrl}v1/images/generations`, {
       method: 'POST',
       headers: { ...commonHeaders, "X-ModelScope-Async-Mode": "true" },
       body: JSON.stringify({
@@ -134,11 +157,12 @@ app.post("/api/generate", rateLimiter, async (req, res) => {
           size: imageSize
         }
       })
-    });
+    }, 3, 2000);
 
     if (!response.ok) {
       const errorText = await response.text();
-      return res.status(response.status).json({ error: `ModelScope API Error: ${errorText}` });
+      const cleanError = errorText.replace(/ModelScope/gi, 'Bol-AI');
+      return res.status(response.status).json({ error: `Bol-AI Error: ${cleanError}` });
     }
 
     const initialData = await response.json() as any;
@@ -171,14 +195,15 @@ app.get("/api/tasks/:taskId", async (req, res) => {
       "Content-Type": "application/json",
     };
 
-    const resultResponse = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
+    const resultResponse = await fetchWithRetry(`${baseUrl}v1/tasks/${taskId}`, {
       method: 'GET',
       headers: { ...commonHeaders, "X-ModelScope-Task-Type": "image_generation" },
-    });
+    }, 3, 1000);
 
     if (!resultResponse.ok) {
       const errorText = await resultResponse.text();
-      return res.status(resultResponse.status).json({ error: `ModelScope API Error: ${errorText}` });
+      const cleanError = errorText.replace(/ModelScope/gi, 'Bol-AI');
+      return res.status(resultResponse.status).json({ error: `Bol-AI Error: ${cleanError}` });
     }
 
     const data = await resultResponse.json() as any;
@@ -190,7 +215,7 @@ app.get("/api/tasks/:taskId", async (req, res) => {
 });
 
 async function startServer() {
-  const PORT = process.env.PORT || 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {

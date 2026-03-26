@@ -5,11 +5,20 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2 } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X } from 'lucide-react';
+import { auth, googleProvider, db } from './lib/firebase';
+import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
+// Add your example image URLs here! You can use local paths or full URLs.
 const EXAMPLE_IMAGES = [
-  'v.png', 'v2.png', 'v3.png', 'v4.png', 'v5.png', 'v6.png',
-  'v7.png', 'v8.png', 'v9.png', 'v.10.png', 'v11.png', 'v.12.png'
+  'https://i.ibb.co/4ZS1YDxy/v.png',
+  'https://i.ibb.co/zWKc7cR9/v2.png',
+  'https://i.ibb.co/rRKWhbmj/v3.png',
+  'https://i.ibb.co/PvjnRYBk/v4.png',
+  'https://i.ibb.co/MkP4z7fG/v5.png',
+  'https://i.ibb.co/B2mDVBQw/v7.png',
+  'https://i.ibb.co/4ZP81Tr7/v11.png'
 ];
 
 export default function App() {
@@ -25,28 +34,90 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [isUiMode, setIsUiMode] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoginSliderOpen, setIsLoginSliderOpen] = useState(false);
+  const [generationsCount, setGenerationsCount] = useState(() => {
+    const saved = localStorage.getItem('bol_ai_generations');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('bol_ai_generations', generationsCount.toString());
+  }, [generationsCount]);
 
   const nextGalleryImage = () => setGalleryIndex((prev) => (prev + 1) % EXAMPLE_IMAGES.length);
   const prevGalleryImage = () => setGalleryIndex((prev) => (prev - 1 + EXAMPLE_IMAGES.length) % EXAMPLE_IMAGES.length);
 
   const handleDownload = async (url: string) => {
     try {
-      // If it's an external URL, use our proxy to avoid CORS issues and force download
-      const downloadUrl = url.startsWith('http') ? `/api/download?url=${encodeURIComponent(url)}` : url;
+      // Use our proxy to avoid CORS issues
+      const downloadUrl = `/api/download?url=${encodeURIComponent(url)}`;
       
       const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error("Failed to fetch image");
+      
       const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = `bol-ai-image-${Date.now()}.png`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      
+      const imgUrl = URL.createObjectURL(blob);
+      
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = imgUrl;
+      });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error("Could not get canvas context");
+
+      // Draw original image
+      ctx.drawImage(img, 0, 0);
+
+      // Add watermark
+      const fontSize = Math.max(20, Math.floor(img.width / 25));
+      ctx.font = `bold ${fontSize}px sans-serif`;
+      ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+      ctx.textAlign = "right";
+      ctx.textBaseline = "bottom";
+      
+      // Add a slight shadow for readability
+      ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+      ctx.shadowBlur = 10;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+
+      const padding = fontSize;
+      ctx.fillText("Bol-Ai", img.width - padding, img.height - padding);
+
+      // Trigger download
+      canvas.toBlob((resultBlob) => {
+        if (!resultBlob) return;
+        const finalUrl = URL.createObjectURL(resultBlob);
+        const link = document.createElement('a');
+        link.href = finalUrl;
+        link.download = `bol-ai-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(finalUrl);
+        URL.revokeObjectURL(imgUrl);
+      }, 'image/png');
+
     } catch (error) {
-      console.error("Error downloading image:", error);
-      window.open(url, '_blank'); // Fallback
+      console.error("Download error:", error);
+      // Fallback: open in new tab if proxy fails
+      window.open(url, '_blank');
     }
   };
 
@@ -65,6 +136,11 @@ Style to emulate: `;
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     
+    if (!user && generationsCount >= 3) {
+      setIsLoginSliderOpen(true);
+      return;
+    }
+
     setIsEnhancing(false);
     setError(null);
     setGeneratedImage(null);
@@ -130,7 +206,7 @@ Style to emulate: `;
       // Poll for status
       let isComplete = false;
       let attempts = 0;
-      const maxAttempts = 30; // 30 * 2s = 60 seconds max
+      const maxAttempts = 60; // 60 * 2s = 120 seconds max (increased to prevent timeouts)
 
       while (!isComplete && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -149,14 +225,35 @@ Style to emulate: `;
         
         if (statusData.task_status === "SUCCEED") {
           if (statusData.output_images && statusData.output_images.length > 0) {
-            setGeneratedImage(statusData.output_images[0]);
+            const finalImageUrl = statusData.output_images[0];
+            setGeneratedImage(finalImageUrl);
             setGeneratedSize(selectedSize);
             isComplete = true;
+            
+            if (!user) {
+              setGenerationsCount(prev => prev + 1);
+            } else {
+              // Save to Firestore for logged-in users
+              try {
+                await addDoc(collection(db, 'generations'), {
+                  userId: user.uid,
+                  userEmail: user.email,
+                  prompt: finalPrompt,
+                  imageUrl: finalImageUrl,
+                  size: selectedSize,
+                  createdAt: serverTimestamp()
+                });
+                console.log("Image saved to Firestore successfully!");
+              } catch (dbError) {
+                console.error("Failed to save to Firestore:", dbError);
+                // We don't throw here because the image was generated successfully
+              }
+            }
           } else {
-            throw new Error("ModelScope succeeded but returned no images.");
+            throw new Error("Bol-AI succeeded but returned no images.");
           }
         } else if (statusData.task_status === "FAILED") {
-          throw new Error("ModelScope failed to generate image.");
+          throw new Error("Bol-AI failed to generate image.");
         }
       }
 
@@ -194,10 +291,29 @@ Style to emulate: `;
           </h1>
         </motion.div>
 
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-white/60">
-          <a href="#" className="hover:text-neon-blue transition-colors">Generator</a>
-          <a href="#gallery" className="hover:text-neon-blue transition-colors">Gallery</a>
-        </nav>
+        <div className="flex items-center gap-8">
+          <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-white/60">
+            <a href="#" className="hover:text-neon-blue transition-colors">Generator</a>
+            <a href="#gallery" className="hover:text-neon-blue transition-colors">Gallery</a>
+          </nav>
+          
+          <motion.div 
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+          >
+            <button 
+              onClick={() => setIsLoginSliderOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+            >
+              {user && user.photoURL ? (
+                <img src={user.photoURL} alt="User" className="w-8 h-8 rounded-full border border-neon-blue/50" />
+              ) : (
+                <UserCircle className="w-6 h-6 text-neon-blue" />
+              )}
+              <span className="hidden sm:inline font-medium">{user ? user.displayName?.split(' ')[0] : 'Login'}</span>
+            </button>
+          </motion.div>
+        </div>
       </header>
 
       <main className="container mx-auto px-6 pt-12 pb-24">
@@ -267,7 +383,7 @@ Style to emulate: `;
             initial={{ opacity: 0, scale: 0.95, rotateX: 10 }}
             animate={{ opacity: 1, scale: 1, rotateX: 0, y: [0, -5, 0] }}
             transition={{ y: { duration: 4, repeat: Infinity, ease: "easeInOut" } }}
-            className="glass rounded-[2.5rem] p-3 flex flex-col md:flex-row gap-3 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden border border-white/10"
+            className="glass rounded-[2.5rem] p-4 flex flex-col md:flex-row gap-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] relative overflow-hidden border border-white/10 group hover:border-neon-blue/30 transition-all duration-500"
             style={{ transformStyle: 'preserve-3d', perspective: '1000px' }}
           >
             {isEnhancing && (
@@ -282,13 +398,17 @@ Style to emulate: `;
                 </span>
               </motion.div>
             )}
-            <input 
-              type="text" 
+            <textarea 
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder={isUiMode ? "Describe the UI style you want to recreate..." : "Describe what you want to see (any language)..."}
-              className="flex-1 bg-transparent px-6 py-4 outline-none text-white placeholder:text-white/20 font-medium"
-              onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+              className="flex-1 bg-transparent px-6 py-4 outline-none text-white placeholder:text-white/20 font-medium resize-none min-h-[80px] max-h-[300px] scrollbar-hide"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleGenerate();
+                }
+              }}
               disabled={isEnhancing || isGenerating}
             />
             <button 
@@ -363,7 +483,15 @@ Style to emulate: `;
                 exit={{ opacity: 0, scale: 0.95 }}
                 className="mt-12"
               >
-                <div className="glass rounded-[2rem] overflow-hidden relative group min-h-[400px] flex items-center justify-center bg-black/20">
+                <div 
+                  className="glass rounded-[2rem] overflow-hidden relative group flex items-center justify-center bg-black/20 mx-auto transition-all duration-500"
+                  style={{
+                    aspectRatio: selectedSize === "1280*720" ? "16/9" : selectedSize === "720*1280" ? "9/16" : "1/1",
+                    maxHeight: "80vh",
+                    width: selectedSize === "720*1280" ? "auto" : "100%",
+                    maxWidth: selectedSize === "720*1280" ? "calc(80vh * (9/16))" : "100%"
+                  }}
+                >
                   {isGenerating ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/40 backdrop-blur-md">
                       <div className="relative">
@@ -438,7 +566,7 @@ Style to emulate: `;
                 className="relative group break-inside-avoid rounded-3xl overflow-hidden glass border border-white/10 shadow-lg"
               >
                 <img 
-                  src={`/examples/${img}`} 
+                  src={img.startsWith('http') ? img : `/examples/${img}`} 
                   alt={`Gallery ${idx + 1}`}
                   className="w-full h-auto object-contain transition-transform duration-700 group-hover:scale-105"
                   onError={(e) => {
@@ -446,9 +574,12 @@ Style to emulate: `;
                   }}
                   referrerPolicy="no-referrer"
                 />
+                <div className="absolute top-3 right-3 bg-black/40 backdrop-blur-md px-2 py-0.5 rounded-lg border border-white/10 z-10 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                  <span className="text-white font-display font-bold text-[10px] tracking-widest uppercase">Bol-Ai</span>
+                </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-end p-4">
                   <button 
-                    onClick={() => handleDownload(`/examples/${img}`)}
+                    onClick={() => handleDownload(img.startsWith('http') ? img : `/examples/${img}`)}
                     className="p-3 bg-neon-blue text-black rounded-xl hover:bg-white transition-colors active:scale-95 shadow-[0_0_15px_rgba(0,255,255,0.4)]"
                   >
                     <Download className="w-5 h-5" />
@@ -460,45 +591,160 @@ Style to emulate: `;
         </section>
       </main>
 
-      <footer className="border-t border-white/10 py-20 mt-32 bg-black/40 backdrop-blur-xl">
+      <footer className="border-t border-white/10 py-32 mt-32 bg-black/60 backdrop-blur-2xl relative overflow-hidden">
+        <div className="absolute inset-0 -z-10">
+          <div className="absolute top-0 left-1/4 w-96 h-96 bg-neon-blue/5 blur-[150px] rounded-full" />
+          <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-neon-purple/5 blur-[150px] rounded-full" />
+        </div>
         <div className="container mx-auto px-6">
           <motion.div 
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 50 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="grid grid-cols-1 md:grid-cols-3 gap-12 text-center md:text-left"
+            transition={{ duration: 0.8 }}
+            className="grid grid-cols-1 lg:grid-cols-3 gap-20"
           >
-            <div>
-              <h4 className="text-3xl md:text-4xl font-display font-bold text-neon-blue mb-6">About Us</h4>
-              <p className="text-white/60 text-lg leading-relaxed">
-                Bol-AI is a cutting-edge AI image generation platform. We empower creators to turn their imagination into stunning visual masterpieces instantly using advanced AI models.
+            <div className="space-y-8">
+              <h4 className="text-4xl md:text-5xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-white mb-8">About Us</h4>
+              <p className="text-white/70 text-xl leading-relaxed font-medium">
+                Bol-AI is the world's most advanced AI image generation powerhouse. We bridge the gap between human imagination and digital reality, providing creators with the tools to manifest their visions in stunning 8K resolution instantly.
               </p>
+              <div className="flex gap-4">
+                <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-neon-blue/20 hover:border-neon-blue transition-all cursor-pointer">
+                  <Sparkles className="w-5 h-5 text-neon-blue" />
+                </div>
+                <div className="w-12 h-12 rounded-full bg-white/5 border border-white/10 flex items-center justify-center hover:bg-neon-purple/20 hover:border-neon-purple transition-all cursor-pointer">
+                  <Cpu className="w-5 h-5 text-neon-purple" />
+                </div>
+              </div>
             </div>
-            <div>
-              <h4 className="text-3xl md:text-4xl font-display font-bold text-neon-purple mb-6">Privacy Policy</h4>
-              <p className="text-white/60 text-lg leading-relaxed">
-                Your privacy is our priority. We do not store your generated images without permission, and your prompts are processed securely. Read our full policy to learn more.
+            <div className="space-y-8">
+              <h4 className="text-4xl md:text-5xl font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-purple to-white mb-8">Privacy Policy</h4>
+              <p className="text-white/70 text-xl leading-relaxed font-medium">
+                At Bol-AI, your creativity is private. We employ end-to-end encryption for your prompts and never store your generated masterpieces without your explicit consent. Your data remains yours, always.
               </p>
+              <ul className="space-y-4 text-white/50 font-bold uppercase tracking-widest text-xs">
+                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-neon-blue" /> No Data Selling</li>
+                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-neon-purple" /> Secure Processing</li>
+                <li className="flex items-center gap-2"><div className="w-1.5 h-1.5 rounded-full bg-white" /> User Ownership</li>
+              </ul>
             </div>
-            <div>
-              <h4 className="text-3xl md:text-4xl font-display font-bold text-white mb-6">Contact Us</h4>
-              <p className="text-white/60 text-lg leading-relaxed mb-4">
-                Have questions or need support? Reach out to us directly!
+            <div className="space-y-8">
+              <h4 className="text-4xl md:text-5xl font-display font-bold text-white mb-8">Contact Us</h4>
+              <p className="text-white/70 text-xl leading-relaxed font-medium mb-8">
+                Ready to take your creativity to the next level? Our elite support team is here to assist you 24/7.
               </p>
-              <a href="mailto:vivekdalvi147@gmail.com" className="inline-block text-xl md:text-2xl font-bold text-neon-blue hover:text-white transition-colors">
-                vivekdalvi147@gmail.com
-              </a>
+              <div className="glass p-8 rounded-[2rem] border-neon-blue/20 hover:border-neon-blue/50 transition-all group">
+                <p className="text-white/40 text-sm font-bold uppercase tracking-tighter mb-2">Direct Support Email</p>
+                <a href="mailto:vivekdalvi147@gmail.com" className="text-2xl md:text-3xl font-bold text-neon-blue group-hover:text-white transition-colors break-all">
+                  vivekdalvi147@gmail.com
+                </a>
+              </div>
             </div>
           </motion.div>
-          <div className="mt-20 pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-6">
-            <div className="flex items-center gap-3 opacity-50">
-              <Sparkles className="w-6 h-6" />
-              <span className="font-display font-bold text-xl">BOL-AI</span>
+          <div className="mt-32 pt-12 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-8">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-neon-blue to-neon-purple rounded-2xl flex items-center justify-center shadow-lg shadow-neon-blue/20">
+                <Sparkles className="text-white w-7 h-7" />
+              </div>
+              <span className="font-display font-bold text-3xl tracking-tighter">BOL-<span className="text-neon-blue">AI</span></span>
             </div>
-            <p className="text-white/40 text-base">© 2026 Bol-Ai IMG Generator. All rights reserved.</p>
+            <div className="flex flex-col items-center md:items-end gap-2">
+              <p className="text-white/40 text-lg font-medium">© 2026 Bol-Ai IMG Generator. All rights reserved.</p>
+              <p className="text-white/20 text-sm uppercase tracking-[0.3em]">Built for the future of creativity</p>
+            </div>
           </div>
         </div>
       </footer>
+
+      {/* Login Slider */}
+      <AnimatePresence>
+        {isLoginSliderOpen && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsLoginSliderOpen(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            />
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-full max-w-sm bg-black/80 backdrop-blur-2xl border-l border-white/10 z-50 p-8 flex flex-col shadow-[-20px_0_50px_rgba(0,0,0,0.5)]"
+            >
+              <button 
+                onClick={() => setIsLoginSliderOpen(false)}
+                className="absolute top-6 right-6 p-2 rounded-full bg-white/5 hover:bg-white/10 transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+
+              <div className="mt-12 flex flex-col items-center text-center">
+                <div className="w-16 h-16 bg-gradient-to-br from-neon-blue to-neon-purple rounded-2xl flex items-center justify-center shadow-lg shadow-neon-blue/20 mb-6">
+                  <Sparkles className="text-white w-8 h-8" />
+                </div>
+                <h2 className="text-3xl font-display font-bold tracking-tight mb-2">
+                  BOL-<span className="text-neon-blue">AI</span>
+                </h2>
+                
+                {!user ? (
+                  <>
+                    <p className="text-white/60 mb-8">
+                      {generationsCount >= 3 
+                        ? "You've reached your 3 free images limit. Please log in to continue creating masterpieces!" 
+                        : "Log in to unlock unlimited image generation and save your creations."}
+                    </p>
+                    <button 
+                      onClick={async () => {
+                        try {
+                          await signInWithPopup(auth, googleProvider);
+                          setIsLoginSliderOpen(false);
+                        } catch (error) {
+                          console.error("Login failed:", error);
+                        }
+                      }}
+                      className="w-full py-4 px-6 rounded-xl bg-white text-black font-bold flex items-center justify-center gap-3 hover:bg-white/90 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                    >
+                      <svg className="w-6 h-6" viewBox="0 0 24 24">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                        <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                      </svg>
+                      Continue with Google
+                    </button>
+                    <div className="mt-6 text-sm text-white/40 font-medium">
+                      Free generations used: <span className="text-white">{generationsCount} / 3</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mb-6 flex flex-col items-center">
+                      {user.photoURL && (
+                        <img src={user.photoURL} alt="Profile" className="w-24 h-24 rounded-full border-4 border-neon-blue/30 mb-4 shadow-[0_0_30px_rgba(0,255,255,0.2)]" />
+                      )}
+                      <h3 className="text-xl font-bold">{user.displayName}</h3>
+                      <p className="text-white/60">{user.email}</p>
+                    </div>
+                    <button 
+                      onClick={async () => {
+                        await signOut(auth);
+                      }}
+                      className="w-full py-4 px-6 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 font-bold flex items-center justify-center gap-3 hover:bg-red-500/20 transition-colors"
+                    >
+                      <LogOut className="w-5 h-5" />
+                      Sign Out
+                    </button>
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
