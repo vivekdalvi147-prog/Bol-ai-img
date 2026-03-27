@@ -306,6 +306,14 @@ Style to emulate: `;
             
             if (!user) {
               setGenerationsCount(prev => prev + 1);
+              
+              // Update request status to completed for anonymous users
+              if (currentRequestId) {
+                updateDoc(doc(db, 'requests', currentRequestId), {
+                  status: 'completed',
+                  imageUrl: finalImageUrl
+                }).catch(console.error);
+              }
             } else {
               // Upload to ImgBB for logged-in users
               let finalDisplayUrl = finalImageUrl;
@@ -342,14 +350,14 @@ Style to emulate: `;
                 console.error("Failed to save to Firestore:", dbError);
                 // We don't throw here because the image was generated successfully
               }
-            }
-
-            // Update request status to completed
-            if (currentRequestId) {
-              updateDoc(doc(db, 'requests', currentRequestId), {
-                status: 'completed',
-                imageUrl: finalDisplayUrl || finalImageUrl
-              }).catch(console.error);
+              
+              // Update request status to completed for logged in users
+              if (currentRequestId) {
+                updateDoc(doc(db, 'requests', currentRequestId), {
+                  status: 'completed',
+                  imageUrl: finalDisplayUrl
+                }).catch(console.error);
+              }
             }
           } else {
             throw new Error("Bol-AI succeeded but returned no images.");
