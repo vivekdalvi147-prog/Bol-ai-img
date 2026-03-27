@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2 } from 'lucide-react';
 import { auth, googleProvider, db } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc } from 'firebase/firestore';
 
 // Add your example image URLs here! You can use local paths or full URLs.
 const EXAMPLE_IMAGES = [
@@ -48,6 +48,16 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        // Track user login in Firestore for Admin Panel
+        setDoc(doc(db, 'users', currentUser.uid), {
+          uid: currentUser.uid,
+          displayName: currentUser.displayName,
+          email: currentUser.email,
+          photoURL: currentUser.photoURL,
+          lastLogin: serverTimestamp()
+        }, { merge: true }).catch(console.error);
+      }
     });
     return () => unsubscribe();
   }, []);
@@ -226,6 +236,21 @@ Style to emulate: `;
 
     setIsGenerating(true);
 
+    let currentRequestId: string | null = null;
+    try {
+      // Track request in Firestore
+      const reqRef = await addDoc(collection(db, 'requests'), {
+        userId: user ? user.uid : 'anonymous',
+        userEmail: user ? user.email : 'anonymous',
+        prompt: finalPrompt,
+        status: 'active',
+        createdAt: serverTimestamp()
+      });
+      currentRequestId = reqRef.id;
+    } catch (e) {
+      console.error("Failed to create request tracking doc", e);
+    }
+
     try {
       // Step 2: Generate Image
       const response = await fetch('/api/generate', {
@@ -301,19 +326,30 @@ Style to emulate: `;
 
               // Save to Firestore
               try {
-                await addDoc(collection(db, 'generations'), {
+                const newGen = {
                   userId: user.uid,
                   userEmail: user.email,
                   prompt: finalPrompt,
                   imageUrl: finalDisplayUrl,
                   size: selectedSize,
                   createdAt: serverTimestamp()
-                });
+                };
+                const docRef = await addDoc(collection(db, 'generations'), newGen);
                 console.log("Image saved to Firestore successfully!");
+                // Update UI immediately so it shows in My Creations
+                setMyImages(prev => [{ id: docRef.id, ...newGen }, ...prev]);
               } catch (dbError) {
                 console.error("Failed to save to Firestore:", dbError);
                 // We don't throw here because the image was generated successfully
               }
+            }
+
+            // Update request status to completed
+            if (currentRequestId) {
+              updateDoc(doc(db, 'requests', currentRequestId), {
+                status: 'completed',
+                imageUrl: finalDisplayUrl || finalImageUrl
+              }).catch(console.error);
             }
           } else {
             throw new Error("Bol-AI succeeded but returned no images.");
@@ -329,6 +365,13 @@ Style to emulate: `;
 
     } catch (err: any) {
       setError(err.message);
+      // Update request status to error
+      if (currentRequestId) {
+        updateDoc(doc(db, 'requests', currentRequestId), {
+          status: 'error',
+          error: err.message
+        }).catch(console.error);
+      }
     } finally {
       setIsGenerating(false);
     }

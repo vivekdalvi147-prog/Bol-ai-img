@@ -1,18 +1,55 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Replace this with your actual Admin UID from Firebase Authentication
+    // Example: return request.auth != null && request.auth.uid == 'YOUR_ADMIN_UID_HERE';
+    function isAdmin() {
+      // For now, we will allow anyone who is authenticated to read/write admin data 
+      // ONLY IF they have a specific email or UID. 
+      // IMPORTANT: Replace 'vivekdalvi147@gmail.com' with your actual admin email if you want email-based admin.
+      return request.auth != null && (request.auth.token.email == 'vivekdalvi147@gmail.com' || request.auth.uid == 'YOUR_ADMIN_UID_HERE');
+    }
+
     match /generations/{docId} {
       // Allow anyone to read a specific document if they have the ID (for shared links)
       allow get: if true;
       
-      // Only the owner can list their own documents (for "My Creations" tab)
-      allow list: if request.auth != null && request.auth.uid == resource.data.userId;
+      // Only the owner or admin can list documents
+      allow list: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
       
       // Only authenticated users can create, and they must set themselves as the owner
       allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
       
-      // Only the owner can update or delete their documents
-      allow update, delete: if request.auth != null && request.auth.uid == resource.data.userId;
+      // Only the owner or admin can update or delete
+      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
+    }
+    
+    match /requests/{docId} {
+      // Anyone can create a request (even anonymous users, to track free generations)
+      allow create: if true;
+      
+      // Only admin or the creator can read/update their own request
+      allow read, update: if isAdmin() || (request.auth != null && request.auth.uid == resource.data.userId) || resource.data.userId == 'anonymous';
+      
+      // Only admin can delete requests
+      allow delete: if isAdmin();
+    }
+
+    match /users/{userId} {
+      // Admin can read all users, users can read their own profile
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == userId);
+      
+      // Users can write their own profile
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    match /settings/{docId} {
+      // Anyone can read settings (e.g., to check if maintenance mode is on)
+      allow read: if true;
+      
+      // Only admin can write settings
+      allow write: if isAdmin();
     }
   }
 }
