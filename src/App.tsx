@@ -5,10 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2 } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle } from 'lucide-react';
 import { auth, googleProvider, db } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 // Add your example image URLs here! You can use local paths or full URLs.
 const EXAMPLE_IMAGES = [
@@ -40,10 +40,20 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'generator' | 'gallery' | 'my-creations'>('generator');
   const [myImages, setMyImages] = useState<any[]>([]);
   const [sharedImage, setSharedImage] = useState<any>(null);
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
   const [generationsCount, setGenerationsCount] = useState(() => {
     const saved = localStorage.getItem('bol_ai_generations');
     return saved ? parseInt(saved, 10) : 0;
   });
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
+      if (docSnap.exists()) {
+        setIsMaintenanceMode(docSnap.data().maintenanceMode || false);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -556,7 +566,7 @@ Style to emulate: `;
             </button>
             <button 
               onClick={handleGenerate}
-              disabled={isGenerating || isEnhancing}
+              disabled={isGenerating || isEnhancing || isMaintenanceMode}
               className="bg-gradient-to-r from-neon-blue to-neon-purple px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
             >
               {isGenerating ? (
@@ -569,6 +579,21 @@ Style to emulate: `;
               )}
             </button>
           </motion.div>
+
+          {/* Maintenance Mode Warning */}
+          <AnimatePresence>
+            {isMaintenanceMode && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center gap-3 text-red-400"
+              >
+                <AlertTriangle className="w-6 h-6 shrink-0" />
+                <p className="text-sm font-medium">Bol-AI is currently under maintenance. Image generation is temporarily paused. Please check back later.</p>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Enhanced Prompt Display (Collapsible) */}
           <AnimatePresence>
@@ -628,12 +653,26 @@ Style to emulate: `;
                   }}
                 >
                   {isGenerating ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/40 backdrop-blur-md">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 backdrop-blur-md p-6 text-center">
                       <div className="relative">
-                        <div className="w-16 h-16 border-4 border-neon-blue/20 border-t-neon-blue rounded-full animate-spin" />
-                        <Sparkles className="absolute inset-0 m-auto text-neon-blue w-6 h-6 animate-pulse" />
+                        <div className="w-20 h-20 border-4 border-neon-blue/20 border-t-neon-blue rounded-full animate-spin" />
+                        <Sparkles className="absolute inset-0 m-auto text-neon-blue w-8 h-8 animate-pulse" />
                       </div>
-                      <p className="text-neon-blue font-medium tracking-widest uppercase text-xs">Generating Image...</p>
+                      <p className="text-neon-blue font-bold tracking-widest uppercase text-sm mt-2">Generating Masterpiece...</p>
+                      
+                      {/* Progress Bar */}
+                      <div className="w-full max-w-xs bg-white/10 rounded-full h-1.5 mt-2 overflow-hidden">
+                        <motion.div 
+                          className="bg-gradient-to-r from-neon-blue to-neon-purple h-full" 
+                          initial={{ width: "0%" }} 
+                          animate={{ width: "95%" }} 
+                          transition={{ duration: 45, ease: "easeOut" }} 
+                        />
+                      </div>
+                      
+                      <p className="text-white/50 text-xs mt-2 max-w-xs leading-relaxed">
+                        Image loading time may vary depending on your internet connection and server load. Please wait.
+                      </p>
                     </div>
                   ) : error ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8 text-center">
@@ -795,7 +834,10 @@ Style to emulate: `;
             <Sparkles className="text-neon-blue w-5 h-5" />
             <span className="font-display font-bold text-xl">BOL-<span className="text-neon-blue">AI</span></span>
           </div>
-          <p className="text-white/40 text-sm">© 2026 Bol-AI. All rights reserved.</p>
+          <div className="flex flex-col items-center md:items-end gap-1">
+            <p className="text-white/40 text-sm">© 2026 Bol-AI. All rights reserved.</p>
+            <p className="text-neon-purple/70 text-xs font-bold tracking-wider uppercase">Developer Vivek Dalvi</p>
+          </div>
         </div>
       </footer>
 
