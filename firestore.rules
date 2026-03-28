@@ -16,13 +16,14 @@ service cloud.firestore {
       allow get: if true;
       
       // Only the owner or admin can list documents
-      allow list: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
+      allow list: if (request.auth != null && (request.auth.uid == resource.data.userId || isAdmin())) || resource.data.userId == 'anonymous';
       
       // Only authenticated users can create, and they must set themselves as the owner
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+      // Or anonymous users can create if they set userId to 'anonymous'
+      allow create: if (request.auth != null && request.auth.uid == request.resource.data.userId) || request.resource.data.userId == 'anonymous';
       
       // Only the owner or admin can update or delete
-      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.userId || isAdmin());
+      allow update, delete: if (request.auth != null && (request.auth.uid == resource.data.userId || isAdmin())) || resource.data.userId == 'anonymous';
     }
     
     match /requests/{docId} {

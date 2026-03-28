@@ -141,11 +141,20 @@ export default function App() {
     }
   };
 
+  const [showToast, setShowToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (showToast) {
+      const timer = setTimeout(() => setShowToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [showToast]);
+
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this image?')) return;
     try {
       await deleteDoc(doc(db, 'generations', id));
       setMyImages(prev => prev.filter(img => img.id !== id));
+      setShowToast("Image deleted successfully");
     } catch (e) {
       console.error("Failed to delete image:", e);
     }
@@ -154,7 +163,7 @@ export default function App() {
   const handleShare = (id: string) => {
     const url = `${window.location.origin}/?share=${id}`;
     navigator.clipboard.writeText(url);
-    alert('Link copied to clipboard! Anyone with this link can view the image on Bol-AI.');
+    setShowToast("Link copied to clipboard!");
   };
 
   useEffect(() => {
@@ -366,9 +375,6 @@ Style to emulate: `;
         if (statusData.task_status === "SUCCEED") {
           if (statusData.output_images && statusData.output_images.length > 0) {
             const finalImageUrl = statusData.output_images[0];
-            setGeneratedImage(finalImageUrl);
-            setGeneratedSize(selectedSize);
-            isComplete = true;
             
             const endTime = Date.now();
             const durationMs = endTime - startTime;
@@ -388,11 +394,15 @@ Style to emulate: `;
               const imgbbData = await imgbbRes.json();
               if (imgbbData.success) {
                 finalDisplayUrl = imgbbData.data.url;
-                setGeneratedImage(finalDisplayUrl); // Update UI with ImgBB URL
               }
             } catch (e) {
               console.error("Watermarking or ImgBB Upload Failed", e);
             }
+
+            // Update UI with the FINAL watermarked URL
+            setGeneratedImage(finalDisplayUrl);
+            setGeneratedSize(selectedSize);
+            isComplete = true;
 
             // Save to Firestore for ALL users (so admin can see it)
             try {
@@ -895,12 +905,12 @@ Style to emulate: `;
                     <img 
                       src={img.imageUrl} 
                       alt={img.prompt}
-                      className="w-full h-auto object-contain transition-transform duration-700 group-hover:scale-105 pointer-events-none select-none"
-                      style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+                      className="w-full h-auto object-contain transition-transform duration-700 group-hover:scale-105"
                       onContextMenu={(e) => e.preventDefault()}
                       referrerPolicy="no-referrer"
                     />
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4">
+                    {/* Desktop Hover Overlay */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden md:flex flex-col justify-between p-4">
                       <div className="flex justify-end gap-2">
                         <button onClick={() => handleShare(img.id)} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl backdrop-blur-md transition-colors" title="Share">
                           <Share2 className="w-4 h-4 text-white" />
@@ -916,6 +926,23 @@ Style to emulate: `;
                           className="w-full py-2 bg-neon-blue text-black font-bold rounded-xl hover:bg-white transition-colors flex items-center justify-center gap-2 text-sm"
                         >
                           <Download className="w-4 h-4" /> Download
+                        </button>
+                      </div>
+                    </div>
+                    {/* Mobile Controls (Always Visible) */}
+                    <div className="md:hidden p-3 bg-black/40 backdrop-blur-md border-t border-white/5">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleDownload(img.imageUrl)}
+                          className="flex-1 py-2 bg-neon-blue text-black font-bold rounded-lg flex items-center justify-center gap-2 text-[10px]"
+                        >
+                          <Download className="w-3 h-3" /> Download
+                        </button>
+                        <button onClick={() => handleShare(img.id)} className="p-2 bg-white/10 rounded-lg border border-white/10">
+                          <Share2 className="w-3.5 h-3.5 text-white" />
+                        </button>
+                        <button onClick={() => handleDelete(img.id)} className="p-2 bg-red-500/20 rounded-lg border border-red-500/20">
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
                         </button>
                       </div>
                     </div>
@@ -1071,37 +1098,52 @@ Style to emulate: `;
             >
               <X className="w-6 h-6" />
             </button>
-            <div className="max-w-4xl w-full bg-black/50 border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row">
-              <div className="flex-1 relative bg-black/80 flex items-center justify-center p-4">
+            <div className="max-w-5xl w-full bg-black/80 border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col md:flex-row relative">
+              <div className="flex-1 relative bg-black flex items-center justify-center p-4 md:p-8">
                 <img 
                   src={sharedImage.imageUrl} 
                   alt="Shared Image" 
-                  className="max-h-[70vh] w-auto object-contain pointer-events-none select-none"
-                  style={{ WebkitTouchCallout: 'none', WebkitUserSelect: 'none' }}
+                  className="max-h-[60vh] md:max-h-[80vh] w-full object-contain rounded-2xl shadow-2xl"
                   onContextMenu={(e) => e.preventDefault()}
                 />
+                <div className="absolute top-8 left-8 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] font-bold text-neon-blue uppercase tracking-widest">
+                  <Sparkles className="w-3 h-3" />
+                  Bol-AI Creation
+                </div>
               </div>
-              <div className="w-full md:w-80 p-8 flex flex-col justify-between bg-white/5 backdrop-blur-xl border-l border-white/10">
+              <div className="w-full md:w-[400px] p-8 md:p-12 flex flex-col justify-between bg-gradient-to-b from-white/5 to-transparent backdrop-blur-3xl border-l border-white/10">
                 <div>
-                  <h3 className="text-xl font-bold mb-4 text-neon-blue">Shared Creation</h3>
-                  <p className="text-white/80 text-sm italic mb-6">"{sharedImage.prompt}"</p>
-                  <div className="flex items-center gap-2 text-xs text-white/50 mb-8">
-                    <UserCircle className="w-4 h-4" />
-                    <span>Created by {sharedImage.userEmail?.split('@')[0] || 'Anonymous'}</span>
+                  <div className="flex items-center gap-3 mb-8">
+                    <div className="w-10 h-10 rounded-full bg-neon-blue/20 flex items-center justify-center border border-neon-blue/30">
+                      <UserCircle className="w-6 h-6 text-neon-blue" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Creator</p>
+                      <p className="text-sm font-bold text-white">{sharedImage.userEmail?.split('@')[0] || 'Anonymous'}</p>
+                    </div>
+                  </div>
+                  
+                  <h3 className="text-2xl font-display font-bold mb-4 text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-white">Shared Masterpiece</h3>
+                  <div className="relative">
+                    <p className="text-white/70 text-sm leading-relaxed italic line-clamp-[10] relative z-10">
+                      "{sharedImage.prompt}"
+                    </p>
+                    <div className="absolute -top-4 -left-4 text-6xl text-white/5 font-serif">"</div>
                   </div>
                 </div>
-                <div className="flex flex-col gap-3">
+
+                <div className="mt-12 space-y-4">
                   <button 
                     onClick={() => handleDownload(sharedImage.imageUrl)}
-                    className="w-full py-3 bg-neon-blue text-black font-bold rounded-xl hover:bg-white transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-neon-blue text-black font-bold rounded-2xl hover:bg-white transition-all duration-300 flex items-center justify-center gap-3 shadow-[0_0_20px_rgba(0,255,255,0.3)] active:scale-95"
                   >
-                    <Download className="w-5 h-5" /> Download Image
+                    <Download className="w-5 h-5" /> Download Masterpiece
                   </button>
                   <button 
                     onClick={() => { setSharedImage(null); setActivePage('home'); setActiveTab('generator'); }}
-                    className="w-full py-3 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-4 bg-white/5 text-white font-bold rounded-2xl hover:bg-white/10 transition-all border border-white/10 flex items-center justify-center gap-3 active:scale-95"
                   >
-                    <Wand2 className="w-5 h-5" /> Make your own images
+                    <Wand2 className="w-5 h-5 text-neon-purple" /> Create Your Own
                   </button>
                 </div>
               </div>
@@ -1235,6 +1277,23 @@ Style to emulate: `;
               </div>
             </motion.div>
           </>
+        )}
+      </AnimatePresence>
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {showToast && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl text-white font-bold shadow-2xl flex items-center gap-3"
+          >
+            <div className="w-2 h-2 rounded-full bg-neon-blue animate-pulse" />
+            {showToast}
+            <button onClick={() => setShowToast(null)} className="ml-2 text-white/40 hover:text-white transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>
