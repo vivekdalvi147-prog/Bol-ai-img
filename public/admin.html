@@ -17,28 +17,30 @@
         }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         .glass { 
-            background: rgba(15, 15, 15, 0.7); 
-            backdrop-filter: blur(20px); 
-            border: 1px solid rgba(176, 38, 255, 0.15); 
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(0, 240, 255, 0.05); 
+            background: rgba(5, 5, 5, 0.8); 
+            backdrop-filter: blur(24px); 
+            border: 1px solid rgba(0, 240, 255, 0.1); 
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8); 
         }
         .tab-active { 
-            border-bottom: 2px solid #00f0ff; 
+            border-left: 3px solid #00f0ff; 
             color: #00f0ff; 
-            text-shadow: 0 0 10px rgba(0, 240, 255, 0.5); 
-            background: linear-gradient(to top, rgba(0, 240, 255, 0.1), transparent);
+            background: linear-gradient(to right, rgba(0, 240, 255, 0.1), transparent);
         }
-        .neon-text-blue { color: #00f0ff; text-shadow: 0 0 10px rgba(0, 240, 255, 0.5); }
-        .neon-text-purple { color: #b026ff; text-shadow: 0 0 10px rgba(176, 38, 255, 0.5); }
-        .neon-text-red { color: #ff003c; text-shadow: 0 0 10px rgba(255, 0, 60, 0.5); }
+        @media (max-width: 768px) {
+            .tab-active {
+                border-left: none;
+                border-bottom: 3px solid #00f0ff;
+                background: linear-gradient(to top, rgba(0, 240, 255, 0.1), transparent);
+            }
+        }
+        .neon-border-blue { border: 1px solid rgba(0, 240, 255, 0.3); box-shadow: 0 0 15px rgba(0, 240, 255, 0.1); }
+        .neon-border-purple { border: 1px solid rgba(176, 38, 255, 0.3); box-shadow: 0 0 15px rgba(176, 38, 255, 0.1); }
         
-        .action-btn { 
-            background: rgba(255, 0, 60, 0.1); 
-            border: 1px solid #ff003c; 
-            color: #ff003c; 
-            box-shadow: 0 0 10px rgba(255, 0, 60, 0.2); 
-            transition: all 0.3s ease;
-        }
+        .traffic-row { cursor: pointer; transition: all 0.2s; }
+        .traffic-row:hover { background: rgba(0, 240, 255, 0.05); }
+        .detail-row { display: none; background: rgba(0, 0, 0, 0.4); }
+        .detail-row.active { display: table-row; }
         .action-btn:hover { 
             background: #ff003c; 
             color: white; 
@@ -121,10 +123,11 @@
             <!-- Sidebar / Mobile Tabs -->
             <nav class="glass md:w-64 shrink-0 flex md:flex-col overflow-x-auto md:overflow-y-auto border-b md:border-b-0 md:border-r border-white/10">
                 <button data-tab="dashboard" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap tab-active font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview</button>
+                <button data-tab="requests" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="activity" class="w-4 h-4"></i> Traffic</button>
+                <button data-tab="stats" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Stats</button>
+                <div class="mt-auto hidden md:block border-t border-white/10"></div>
                 <button data-tab="server" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="server" class="w-4 h-4"></i> Hardware</button>
-                <button data-tab="requests" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="activity" class="w-4 h-4"></i> Network Traffic</button>
-                <button data-tab="stats" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Analytics</button>
-                <button data-tab="settings" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="settings" class="w-4 h-4"></i> System Config</button>
+                <button data-tab="settings" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="settings" class="w-4 h-4"></i> Settings</button>
             </nav>
 
             <!-- Tab Contents -->
@@ -134,39 +137,36 @@
                 <div id="tab-dashboard" class="tab-content space-y-8">
                     <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">System Overview</h2>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div class="glass p-8 rounded-2xl relative overflow-hidden group">
-                            <div class="absolute top-0 right-0 w-32 h-32 bg-[#00f0ff]/10 rounded-full blur-2xl group-hover:bg-[#00f0ff]/20 transition-all"></div>
-                            <h3 class="text-white/50 text-xs font-bold mb-2 uppercase tracking-widest">Today's Load</h3>
-                            <p id="today-requests" class="text-5xl font-bold neon-text-blue font-mono">0</p>
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Today's Traffic</h3>
+                            <p id="today-requests" class="text-4xl font-bold neon-text-blue font-mono">0</p>
                         </div>
-                        <div class="glass p-8 rounded-2xl relative overflow-hidden group">
-                            <div class="absolute top-0 right-0 w-32 h-32 bg-[#b026ff]/10 rounded-full blur-2xl group-hover:bg-[#b026ff]/20 transition-all"></div>
-                            <h3 class="text-white/50 text-xs font-bold mb-2 uppercase tracking-widest">Total Lifetime Load</h3>
-                            <p id="total-requests" class="text-5xl font-bold neon-text-purple font-mono">0</p>
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Total Traffic</h3>
+                            <p id="total-requests" class="text-4xl font-bold neon-text-purple font-mono">0</p>
                         </div>
-                        <div class="glass p-8 rounded-2xl relative overflow-hidden group">
-                            <div class="absolute top-0 right-0 w-32 h-32 bg-[#ff003c]/10 rounded-full blur-2xl group-hover:bg-[#ff003c]/20 transition-all"></div>
-                            <h3 class="text-white/50 text-xs font-bold mb-2 uppercase tracking-widest">Daily Run Time</h3>
-                            <p id="daily-run-time" class="text-5xl font-bold neon-text-red font-mono">0s</p>
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Run Time</h3>
+                            <p id="daily-run-time" class="text-4xl font-bold neon-text-red font-mono">0s</p>
                         </div>
                     </div>
 
                     <div class="glass rounded-2xl overflow-hidden flex flex-col border border-white/10">
                         <div class="p-6 border-b border-white/10 flex justify-between items-center gap-4 flex-wrap bg-black/40">
-                            <h3 class="font-bold text-lg uppercase tracking-widest flex items-center gap-2"><i data-lucide="users" class="w-5 h-5 text-[#00f0ff]"></i> Registered Entities</h3>
+                            <h3 class="font-bold text-lg uppercase tracking-widest flex items-center gap-2"><i data-lucide="users" class="w-5 h-5 text-[#00f0ff]"></i> Users</h3>
                             <div class="relative w-full md:w-72">
                                 <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40"></i>
-                                <input type="text" id="user-search" placeholder="Query database..." class="bg-black/50 border border-white/20 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-[#00f0ff] focus:shadow-[0_0_10px_rgba(0,240,255,0.2)] w-full transition-all font-mono">
+                                <input type="text" id="user-search" placeholder="Search users..." class="bg-black/50 border border-white/20 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-[#00f0ff] w-full transition-all font-mono">
                             </div>
                         </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-sm">
-                                <thead class="bg-black/60 text-white/50 uppercase tracking-wider text-xs">
+                                <thead class="bg-black/60 text-white/50 uppercase tracking-wider text-[10px]">
                                     <tr>
-                                        <th class="px-6 py-4 font-bold">Identity</th>
-                                        <th class="px-6 py-4 font-bold">Comms Link</th>
-                                        <th class="px-6 py-4 font-bold">Node ID</th>
-                                        <th class="px-6 py-4 font-bold">Last Sync</th>
+                                        <th class="px-6 py-4 font-bold">User</th>
+                                        <th class="px-6 py-4 font-bold">Email</th>
+                                        <th class="px-6 py-4 font-bold">User ID</th>
+                                        <th class="px-6 py-4 font-bold text-right">Last Seen</th>
                                     </tr>
                                 </thead>
                                 <tbody id="users-table-body" class="divide-y divide-white/5 font-mono text-white/80">
@@ -240,18 +240,20 @@
 
                 <!-- Requests Tab -->
                 <div id="tab-requests" class="tab-content hidden space-y-8">
-                    <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">Network Traffic</h2>
+                    <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">Traffic</h2>
                     <div class="glass rounded-2xl overflow-hidden border border-white/10">
+                        <div class="p-4 bg-black/40 border-b border-white/10">
+                            <p class="text-[10px] text-white/40 uppercase tracking-widest font-bold">Click any row to see full details</p>
+                        </div>
                         <div class="overflow-x-auto">
                             <table class="w-full text-left text-sm">
-                                <thead class="bg-black/60 text-white/50 uppercase tracking-wider text-xs">
+                                <thead class="bg-black/60 text-white/50 uppercase tracking-wider text-[10px]">
                                     <tr>
-                                        <th class="px-6 py-4 font-bold">Timestamp</th>
-                                        <th class="px-6 py-4 font-bold">User ID & IP</th>
-                                        <th class="px-6 py-4 font-bold w-1/3">Prompt</th>
-                                        <th class="px-6 py-4 font-bold">State</th>
-                                        <th class="px-6 py-4 font-bold">Output</th>
-                                        <th class="px-6 py-4 font-bold">Action</th>
+                                        <th class="px-6 py-4 font-bold">Time</th>
+                                        <th class="px-6 py-4 font-bold">User</th>
+                                        <th class="px-6 py-4 font-bold">IP Address</th>
+                                        <th class="px-6 py-4 font-bold">Status</th>
+                                        <th class="px-6 py-4 font-bold text-right">Action</th>
                                     </tr>
                                 </thead>
                                 <tbody id="requests-table-body" class="divide-y divide-white/5 font-mono text-white/80">
@@ -264,18 +266,18 @@
 
                 <!-- Stats Tab -->
                 <div id="tab-stats" class="tab-content hidden space-y-8">
-                    <h2 class="text-3xl font-bold neon-text-purple uppercase tracking-widest">Analytics Core</h2>
+                    <h2 class="text-3xl font-bold neon-text-purple uppercase tracking-widest">Stats</h2>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div class="glass p-8 rounded-2xl border-l-4 border-l-green-500">
-                            <h3 class="text-white/50 text-xs font-bold mb-2 uppercase tracking-widest">Successful Renders</h3>
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Success</h3>
                             <p id="stat-total-images" class="text-4xl font-bold text-green-400 font-mono">0</p>
                         </div>
                         <div class="glass p-8 rounded-2xl border-l-4 border-l-red-500">
-                            <h3 class="text-white/50 text-xs font-bold mb-2 uppercase tracking-widest">Failed Operations</h3>
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Failed</h3>
                             <p id="stat-total-errors" class="text-4xl font-bold text-red-400 font-mono">0</p>
                         </div>
                         <div class="glass p-8 rounded-2xl border-l-4 border-l-orange-500">
-                            <h3 class="text-white/50 text-xs font-bold mb-2 uppercase tracking-widest">Failure Rate</h3>
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Error Rate</h3>
                             <p id="stat-error-rate" class="text-4xl font-bold text-orange-400 font-mono">0%</p>
                         </div>
                     </div>
@@ -283,29 +285,29 @@
 
                 <!-- Settings Tab -->
                 <div id="tab-settings" class="tab-content hidden space-y-8">
-                    <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">System Configuration</h2>
+                    <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">Settings</h2>
                     <div class="glass p-8 rounded-2xl max-w-2xl border border-white/10 space-y-6">
                         <div class="flex flex-col gap-4 p-4 bg-black/40 rounded-xl border border-white/5">
                             <div>
-                                <h3 class="font-bold text-lg text-[#ff003c] flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5"></i> Maintenance Mode</h3>
-                                <p class="text-sm text-white/50 mt-1 font-mono">Control user access to the generator.</p>
+                                <h3 class="font-bold text-lg text-[#ff003c] flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5"></i> Manifesting Mode</h3>
+                                <p class="text-sm text-white/50 mt-1 font-mono">Turn on maintenance mode for all users.</p>
                             </div>
                             <select id="maintenance-select" class="bg-black/80 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#ff003c] transition-all font-mono">
-                                <option value="0">Off (Normal Operation)</option>
-                                <option value="1">Full (Disable Generation)</option>
-                                <option value="2">Soft (Show Server Error)</option>
+                                <option value="0">Off (Normal)</option>
+                                <option value="1">Full (Disable All)</option>
+                                <option value="2">Soft (Server Error)</option>
                             </select>
                         </div>
 
                         <div class="flex flex-col gap-4 p-4 bg-black/40 rounded-xl border border-white/5">
                             <div>
-                                <h3 class="font-bold text-lg text-[#00f0ff] flex items-center gap-2"><i data-lucide="image-plus" class="w-5 h-5"></i> Add Example Image</h3>
-                                <p class="text-sm text-white/50 mt-1 font-mono">Add a new example to the gallery.</p>
+                                <h3 class="font-bold text-lg text-[#00f0ff] flex items-center gap-2"><i data-lucide="image-plus" class="w-5 h-5"></i> Add Example</h3>
+                                <p class="text-sm text-white/50 mt-1 font-mono">Add a new image to the home gallery.</p>
                             </div>
                             <form id="add-example-form" class="space-y-4">
-                                <input type="text" id="example-prompt" placeholder="Image Prompt" required class="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#00f0ff] transition-all font-mono text-sm">
+                                <input type="text" id="example-prompt" placeholder="Prompt" required class="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#00f0ff] transition-all font-mono text-sm">
                                 <input type="url" id="example-url" placeholder="Image URL" required class="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#00f0ff] transition-all font-mono text-sm">
-                                <button type="submit" class="w-full bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff] font-bold py-3 rounded-xl transition-all hover:bg-[#00f0ff] hover:text-black uppercase tracking-wider text-sm">Add Example</button>
+                                <button type="submit" class="w-full bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff] font-bold py-3 rounded-xl transition-all hover:bg-[#00f0ff] hover:text-black uppercase tracking-wider text-sm">Save Example</button>
                             </form>
                         </div>
                     </div>
@@ -479,34 +481,63 @@
 
                     // Render Request Row
                     const tr = document.createElement('tr');
-                    tr.className = "hover:bg-white/5 transition-colors";
+                    tr.className = "traffic-row hover:bg-white/5 transition-colors";
+                    tr.onclick = () => {
+                        const detailRow = document.getElementById(`detail-${reqId}`);
+                        detailRow.classList.toggle('active');
+                    };
                     
                     let statusHtml = '';
-                    if (data.status === 'active') statusHtml = '<span class="px-3 py-1 bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 rounded-full text-xs font-bold uppercase tracking-wider shadow-[0_0_10px_rgba(0,240,255,0.2)] animate-pulse">Processing</span>';
-                    else if (data.status === 'completed') statusHtml = '<span class="px-3 py-1 bg-green-500/10 text-green-400 border border-green-500/30 rounded-full text-xs font-bold uppercase tracking-wider">Success</span>';
-                    else statusHtml = `<span class="px-3 py-1 bg-red-500/10 text-red-400 border border-red-500/30 rounded-full text-xs font-bold uppercase tracking-wider cursor-help" title="${data.error || 'Error'}">Failed</span>`;
+                    if (data.status === 'active') statusHtml = '<span class="text-[#00f0ff] animate-pulse">●</span>';
+                    else if (data.status === 'completed') statusHtml = '<span class="text-green-400">●</span>';
+                    else statusHtml = '<span class="text-red-400">●</span>';
 
-                    let imgHtml = data.imageUrl ? `<a href="${data.imageUrl}" target="_blank" class="text-[#b026ff] hover:text-[#00f0ff] hover:underline flex items-center gap-1"><i data-lucide="external-link" class="w-3 h-3"></i> View</a>` : '<span class="text-white/20">-</span>';
-                    
-                    const ipLink = data.userIp ? `<a href="https://ipinfo.io/${data.userIp}" target="_blank" class="text-[#00f0ff] hover:underline">${data.userIp}</a>` : 'Unknown IP';
-                    const userIdDisplay = data.userId || 'Anonymous';
+                    const ipLink = data.userIp ? `<a href="https://ipinfo.io/${data.userIp}" target="_blank" class="text-[#00f0ff] hover:underline" onclick="event.stopPropagation()">${data.userIp}</a>` : 'Unknown';
+                    const userDisplay = data.userEmail || data.userId || 'Guest';
 
                     tr.innerHTML = `
-                        <td class="px-6 py-4 whitespace-nowrap text-xs">${date.toLocaleString()}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-xs text-white/60">
-                            <div>ID: <span class="text-[#b026ff]">${userIdDisplay}</span></div>
-                            <div>IP: ${ipLink}</div>
-                        </td>
-                        <td class="px-6 py-4 text-white/80 text-sm break-words">${data.prompt}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-[10px]">${date.toLocaleTimeString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-xs font-bold text-white/90">${userDisplay}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-xs">${ipLink}</td>
                         <td class="px-6 py-4">${statusHtml}</td>
-                        <td class="px-6 py-4">${imgHtml}</td>
-                        <td class="px-6 py-4">
-                            <button onclick="deleteRequest('${reqId}')" class="text-red-500 hover:text-red-400 transition-colors p-2 rounded-lg hover:bg-red-500/10" title="Delete Request">
-                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        <td class="px-6 py-4 text-right">
+                            <button onclick="event.stopPropagation(); deleteRequest('${reqId}')" class="text-red-500 hover:text-red-400 p-1">
+                                <i data-lucide="trash-2" class="w-3 h-3"></i>
                             </button>
                         </td>
                     `;
+                    
+                    const detailTr = document.createElement('tr');
+                    detailTr.id = `detail-${reqId}`;
+                    detailTr.className = "detail-row";
+                    detailTr.innerHTML = `
+                        <td colspan="5" class="px-6 py-6 border-b border-white/5">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="space-y-3">
+                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Full Prompt</p>
+                                    <p class="text-sm text-white/80 leading-relaxed bg-black/30 p-4 rounded-lg border border-white/5">${data.prompt}</p>
+                                    <div class="flex gap-4 text-[10px]">
+                                        <p><span class="text-white/40">USER ID:</span> ${data.userId || 'N/A'}</p>
+                                        <p><span class="text-white/40">EMAIL:</span> ${data.userEmail || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Output</p>
+                                    ${data.imageUrl ? `
+                                        <div class="relative group">
+                                            <img src="${data.imageUrl}" class="w-full max-w-xs rounded-lg border border-white/10 shadow-lg">
+                                            <a href="${data.imageUrl}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all rounded-lg">
+                                                <span class="text-xs font-bold uppercase tracking-widest">View Full Size</span>
+                                            </a>
+                                        </div>
+                                    ` : '<p class="text-xs text-white/20 italic">No output generated</p>'}
+                                </div>
+                            </div>
+                        </td>
+                    `;
+
                     requestsBody.appendChild(tr);
+                    requestsBody.appendChild(detailTr);
                 });
 
                 // Update Stats
@@ -559,17 +590,17 @@
             const tbody = document.getElementById('users-table-body');
             tbody.innerHTML = '';
             users.forEach(u => {
-                const date = u.lastLogin ? u.lastLogin.toDate().toLocaleString() : 'N/A';
+                const date = u.lastLogin ? u.lastLogin.toDate().toLocaleDateString() : 'N/A';
                 const tr = document.createElement('tr');
                 tr.className = "hover:bg-white/5 transition-colors";
                 tr.innerHTML = `
                     <td class="px-6 py-4 flex items-center gap-3">
-                        ${u.photoURL ? `<img src="${u.photoURL}" class="w-8 h-8 rounded-full border border-white/20">` : '<div class="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="user" class="w-4 h-4 text-white/50"></i></div>'}
-                        <span class="font-bold text-white/90">${u.displayName || 'Unknown Entity'}</span>
+                        ${u.photoURL ? `<img src="${u.photoURL}" class="w-6 h-6 rounded-full border border-white/20">` : '<div class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="user" class="w-3 h-3 text-white/50"></i></div>'}
+                        <span class="font-bold text-white/90 text-xs">${u.displayName || 'Guest'}</span>
                     </td>
-                    <td class="px-6 py-4 text-white/60">${u.email || 'N/A'}</td>
-                    <td class="px-6 py-4 text-xs text-[#b026ff]">${u.uid}</td>
-                    <td class="px-6 py-4 text-xs text-white/40">${date}</td>
+                    <td class="px-6 py-4 text-white/60 text-xs">${u.email || 'N/A'}</td>
+                    <td class="px-6 py-4 text-[10px] text-[#b026ff]">${u.uid}</td>
+                    <td class="px-6 py-4 text-[10px] text-white/40 text-right">${date}</td>
                 `;
                 tbody.appendChild(tr);
             });

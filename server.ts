@@ -89,7 +89,7 @@ app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
   }
 });
 
-// API Route to Enhance Prompt (using Gemini proxy)
+// API Route to Enhance Prompt (using Bol-AI Engine)
 app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
   try {
     const { prompt } = req.body;
@@ -115,7 +115,7 @@ USER PROMPT TO UPGRADE:
 "${prompt}"`;
 
     const response = await ai.models.generateContent({
-      model: "gemma-3-27b-it", // Using Gemma 3 27B as requested for bigger/better prompts
+      model: "gemma-3-27b-it", // Using high-end model for better prompts
       contents: upgradeInstruction
     });
 
@@ -195,7 +195,7 @@ app.post("/api/generate", rateLimiter, async (req, res) => {
     const taskId = initialData.task_id;
 
     if (!taskId) {
-      return res.status(500).json({ error: "Failed to get task_id from ModelScope." });
+      return res.status(500).json({ error: "Failed to get task_id from Bol-AI." });
     }
 
     res.json({ task_id: taskId });

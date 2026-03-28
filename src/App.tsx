@@ -266,7 +266,7 @@ Style to emulate: `;
     if (isEnhanceEnabled) {
       setIsEnhancing(true);
       try {
-        // Step 1: Enhance Prompt using Gemma 3 27B (via proxy)
+        // Step 1: Enhance Prompt using Bol-AI Engine (via proxy)
         const enhanceRes = await fetch('/api/enhance-prompt', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
