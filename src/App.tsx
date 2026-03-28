@@ -909,8 +909,8 @@ Style to emulate: `;
                       onContextMenu={(e) => e.preventDefault()}
                       referrerPolicy="no-referrer"
                     />
-                    {/* Desktop Hover Overlay */}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden md:flex flex-col justify-between p-4">
+                    {/* Desktop Hover Overlay - Hidden as per user request */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 hidden flex flex-col justify-between p-4">
                       <div className="flex justify-end gap-2">
                         <button onClick={() => handleShare(img.id)} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl backdrop-blur-md transition-colors" title="Share">
                           <Share2 className="w-4 h-4 text-white" />
@@ -930,7 +930,7 @@ Style to emulate: `;
                       </div>
                     </div>
                     {/* Mobile Controls (Always Visible) */}
-                    <div className="md:hidden p-3 bg-black/40 backdrop-blur-md border-t border-white/5">
+                    <div className="p-3 bg-black/40 backdrop-blur-md border-t border-white/5 md:hidden">
                       <div className="flex gap-2">
                         <button 
                           onClick={() => handleDownload(img.imageUrl)}
@@ -1098,20 +1098,20 @@ Style to emulate: `;
             >
               <X className="w-6 h-6" />
             </button>
-            <div className="max-w-5xl w-full bg-black/80 border border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col md:flex-row relative">
-              <div className="flex-1 relative bg-black flex items-center justify-center p-4 md:p-8">
+            <div className="max-w-5xl w-full bg-black/80 border border-white/10 rounded-[2rem] md:rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col md:flex-row relative max-h-[90vh] overflow-y-auto md:overflow-hidden">
+              <div className="w-full md:flex-1 relative bg-black flex items-center justify-center p-4 md:p-8 min-h-[300px] md:min-h-0">
                 <img 
                   src={sharedImage.imageUrl} 
                   alt="Shared Image" 
-                  className="max-h-[60vh] md:max-h-[80vh] w-full object-contain rounded-2xl shadow-2xl"
+                  className="max-h-[50vh] md:max-h-[80vh] w-full object-contain rounded-2xl shadow-2xl"
                   onContextMenu={(e) => e.preventDefault()}
                 />
-                <div className="absolute top-8 left-8 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] font-bold text-neon-blue uppercase tracking-widest">
+                <div className="absolute top-6 left-6 md:top-8 md:left-8 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-[10px] font-bold text-neon-blue uppercase tracking-widest">
                   <Sparkles className="w-3 h-3" />
                   Bol-AI Creation
                 </div>
               </div>
-              <div className="w-full md:w-[400px] p-8 md:p-12 flex flex-col justify-between bg-gradient-to-b from-white/5 to-transparent backdrop-blur-3xl border-l border-white/10">
+              <div className="w-full md:w-[400px] p-6 md:p-12 flex flex-col justify-between bg-gradient-to-b from-white/5 to-transparent backdrop-blur-3xl border-t md:border-t-0 md:border-l border-white/10">
                 <div>
                   <div className="flex items-center gap-3 mb-8">
                     <div className="w-10 h-10 rounded-full bg-neon-blue/20 flex items-center justify-center border border-neon-blue/30">
