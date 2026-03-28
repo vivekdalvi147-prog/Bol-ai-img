@@ -249,7 +249,7 @@ export default function App() {
 Style to emulate: `;
 
   const handleGenerate = async () => {
-    if (!prompt.trim()) return;
+    if (!prompt.trim() || isGenerating || isEnhancing) return;
     
     if (maintenanceMode === 1) return;
     if (maintenanceMode === 2) {
@@ -272,6 +272,7 @@ Style to emulate: `;
     let finalPrompt = isUiMode ? `${UI_DESIGN_PROMPT_PREFIX}${prompt}` : prompt;
     const originalUserPrompt = prompt;
     let currentRequestId: string | null = null;
+    const startTime = Date.now();
 
     try {
       // Track request in Firestore
@@ -285,44 +286,40 @@ Style to emulate: `;
         createdAt: serverTimestamp()
       });
       currentRequestId = reqRef.id;
-    } catch (e) {
-      console.error("Failed to create request tracking doc", e);
-    }
 
-    if (isEnhanceEnabled) {
-      setIsEnhancing(true);
-      try {
-        // Step 1: Enhance Prompt using Bol-AI Engine (via proxy)
-        const enhanceRes = await fetch('/api/enhance-prompt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: finalPrompt }),
-        });
+      if (isEnhanceEnabled) {
+        setIsEnhancing(true);
+        try {
+          // Step 1: Enhance Prompt using Bol-AI Engine (via proxy)
+          const enhanceRes = await fetch('/api/enhance-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: finalPrompt }),
+          });
 
-        if (enhanceRes.ok) {
-          const enhanceData = await enhanceRes.json();
-          if (enhanceData.enhancedPrompt) {
-            finalPrompt = enhanceData.enhancedPrompt;
-            setEnhancedPrompt(finalPrompt);
-            // Update request with enhanced prompt
-            if (currentRequestId) {
-              updateDoc(doc(db, 'requests', currentRequestId), {
-                enhancedPrompt: finalPrompt
-              }).catch(console.error);
+          if (enhanceRes.ok) {
+            const enhanceData = await enhanceRes.json();
+            if (enhanceData.enhancedPrompt) {
+              finalPrompt = enhanceData.enhancedPrompt;
+              setEnhancedPrompt(finalPrompt);
+              // Update request with enhanced prompt
+              if (currentRequestId) {
+                await updateDoc(doc(db, 'requests', currentRequestId), {
+                  enhancedPrompt: finalPrompt
+                });
+              }
             }
+          } else {
+            console.warn("Prompt enhancement failed, using original prompt.");
           }
-        } else {
-          console.warn("Prompt enhancement failed, using original prompt.");
+        } catch (err) {
+          console.warn("Prompt enhancement error:", err);
+        } finally {
+          setIsEnhancing(false);
         }
-      } catch (err) {
-        console.warn("Prompt enhancement error:", err);
       }
-      setIsEnhancing(false);
-    }
 
-    setIsGenerating(true);
-    const startTime = Date.now();
-    try {
+      setIsGenerating(true);
       // Step 2: Generate Image
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -355,7 +352,7 @@ Style to emulate: `;
       // Poll for status
       let isComplete = false;
       let attempts = 0;
-      const maxAttempts = 60; // 60 * 2s = 120 seconds max (increased to prevent timeouts)
+      const maxAttempts = 90; // 90 * 2s = 180 seconds (3 minutes)
 
       while (!isComplete && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -431,11 +428,11 @@ Style to emulate: `;
 
             // Update request status to completed
             if (currentRequestId) {
-              updateDoc(doc(db, 'requests', currentRequestId), {
+              await updateDoc(doc(db, 'requests', currentRequestId), {
                 status: 'completed',
                 imageUrl: finalDisplayUrl,
                 durationMs: durationMs
-              }).catch(console.error);
+              });
             }
           } else {
             throw new Error("Bol-AI succeeded but returned no images.");
@@ -446,20 +443,26 @@ Style to emulate: `;
       }
 
       if (!isComplete) {
-        throw new Error("Generation Timeout. Please try again.");
+        throw new Error("Generation Timeout (3m). Please try again.");
       }
 
     } catch (err: any) {
-      setError(err.message);
+      console.error("Generation Error:", err);
+      setError(err.message || "An unexpected error occurred.");
+      
       // Update request status to error
       if (currentRequestId) {
+        const endTime = Date.now();
+        const durationMs = endTime - startTime;
         updateDoc(doc(db, 'requests', currentRequestId), {
           status: 'error',
-          error: err.message
+          error: err.message || "Unknown error",
+          durationMs: durationMs
         }).catch(console.error);
       }
     } finally {
       setIsGenerating(false);
+      setIsEnhancing(false);
     }
   };
 

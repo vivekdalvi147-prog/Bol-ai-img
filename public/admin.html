@@ -15,6 +15,26 @@
             background-image: radial-gradient(circle at 50% 0%, #1a0b2e 0%, transparent 50%), radial-gradient(circle at 100% 100%, #001a33 0%, transparent 50%);
             background-attachment: fixed;
         }
+        #desktop-only-warning {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: #050505;
+            z-index: 9999;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 2rem;
+        }
+        @media (max-width: 1024px) {
+            #desktop-only-warning {
+                display: flex;
+            }
+            #login-screen, #admin-dashboard {
+                display: none !important;
+            }
+        }
         .font-mono { font-family: 'JetBrains Mono', monospace; }
         .glass { 
             background: rgba(5, 5, 5, 0.8); 
@@ -95,6 +115,15 @@
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
+
+    <!-- Desktop Only Warning -->
+    <div id="desktop-only-warning">
+        <div class="glass p-8 rounded-3xl border border-neon-blue/30 max-w-sm">
+            <i data-lucide="monitor" class="w-16 h-16 text-neon-blue mx-auto mb-6"></i>
+            <h2 class="text-2xl font-bold neon-text-blue mb-4 uppercase tracking-widest">Desktop Only</h2>
+            <p class="text-white/60 text-sm leading-relaxed">The Bol-AI Admin Nexus is a high-precision tool designed for desktop environments. Please switch to a PC to access the system.</p>
+        </div>
+    </div>
 
     <!-- Login Screen -->
     <div id="login-screen" class="flex-1 flex items-center justify-center p-4 relative z-10">
@@ -206,19 +235,19 @@
                             <h3 class="font-bold text-lg text-[#b026ff] flex items-center gap-2"><i data-lucide="shield-check" class="w-5 h-5"></i> Security & Limits</h3>
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Rate Limit (Req/Min)</label>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Rate Limit (Requests per Minute)</label>
                                     <input type="number" id="config-rate-limit" value="5" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-purple transition-all font-mono text-sm">
-                                    <p class="text-[9px] text-white/30 mt-2 italic">Max requests per user per minute (Prevents Spam)</p>
+                                    <p class="text-[9px] text-white/30 mt-2 italic">Maximum number of image generation requests a single user can send in one minute. (Prevents Spam/Abuse)</p>
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Max Concurrent</label>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Max Concurrent Generations</label>
                                     <input type="number" id="config-max-concurrent" value="2" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-purple transition-all font-mono text-sm">
-                                    <p class="text-[9px] text-white/30 mt-2 italic">Max simultaneous generations allowed (Server Load)</p>
+                                    <p class="text-[9px] text-white/30 mt-2 italic">Maximum number of images the server can generate at the same time globally. (Prevents Server Overload)</p>
                                 </div>
                             </div>
                         </div>
 
-                        <button id="save-config-btn" class="w-full bg-gradient-to-r from-neon-blue to-neon-purple text-black font-bold py-4 rounded-xl hover:opacity-90 transition-all uppercase tracking-widest text-sm shadow-[0_0_30px_rgba(0,240,255,0.2)]">Update Engine Config</button>
+                        <button id="save-config-btn" class="w-full bg-[#00f0ff] text-black font-black py-5 rounded-xl hover:bg-white transition-all uppercase tracking-[0.2em] text-sm shadow-[0_0_30px_rgba(0,240,255,0.4)] active:scale-[0.98]">Update Engine Config</button>
                     </div>
                 </div>
 
@@ -499,6 +528,35 @@
 
         // Load Data
         async function loadData() {
+            // Cleanup stuck requests (older than 3 minutes)
+            const cleanupStuckRequests = async () => {
+                const now = new Date();
+                const threeMinsAgo = new Date(now.getTime() - 3 * 60 * 1000);
+                
+                const stuckQuery = query(
+                    collection(db, 'requests'), 
+                    orderBy('createdAt', 'asc'),
+                    limit(50)
+                );
+                
+                const snapshot = await getDocs(stuckQuery);
+                snapshot.forEach(async (docSnap) => {
+                    const data = docSnap.data();
+                    if (data.status === 'active' && data.createdAt && data.createdAt.toDate() < threeMinsAgo) {
+                        console.log(`Cleaning up stuck request: ${docSnap.id}`);
+                        await setDoc(doc(db, 'requests', docSnap.id), {
+                            status: 'error',
+                            error: 'Request Timeout (3m)',
+                            durationMs: 180000
+                        }, { merge: true });
+                    }
+                });
+            };
+
+            // Run cleanup every minute
+            cleanupStuckRequests();
+            setInterval(cleanupStuckRequests, 60000);
+
             // 1. Users
             const usersQuery = query(collection(db, 'users'), orderBy('lastLogin', 'desc'));
             onSnapshot(usersQuery, (snapshot) => {
@@ -620,7 +678,22 @@
                 document.getElementById('total-requests').textContent = totalCount;
                 document.getElementById('stat-total-images').textContent = completedCount;
                 document.getElementById('stat-total-errors').textContent = errorCount;
-                document.getElementById('daily-run-time').textContent = (dailyRunTimeMs / 1000).toFixed(1) + 's';
+                
+                // Format Run Time
+                let runTimeText = '0s';
+                const totalSeconds = Math.floor(dailyRunTimeMs / 1000);
+                if (totalSeconds < 60) {
+                    runTimeText = `${totalSeconds}s`;
+                } else if (totalSeconds < 3600) {
+                    const mins = Math.floor(totalSeconds / 60);
+                    const secs = totalSeconds % 60;
+                    runTimeText = `${mins}m ${secs}s`;
+                } else {
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const mins = Math.floor((totalSeconds % 3600) / 60);
+                    runTimeText = `${hours}h ${mins}m`;
+                }
+                document.getElementById('daily-run-time').textContent = runTimeText;
                 
                 const rate = totalCount > 0 ? Math.round((errorCount / totalCount) * 100) : 0;
                 document.getElementById('stat-error-rate').textContent = rate + '%';
