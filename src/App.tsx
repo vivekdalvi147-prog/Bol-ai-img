@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle, Zap, ShieldCheck, Mail } from 'lucide-react';
 import { auth, googleProvider, db } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
@@ -29,6 +29,7 @@ export default function App() {
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
   const [enhancedPrompt, setEnhancedPrompt] = useState<string | null>(null);
   const [selectedSize, setSelectedSize] = useState("1024*1024");
+  const [quality, setQuality] = useState('standard');
   const [generatedSize, setGeneratedSize] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -319,7 +320,11 @@ Style to emulate: `;
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: finalPrompt, size: selectedSize }),
+        body: JSON.stringify({ 
+          prompt: finalPrompt, 
+          size: selectedSize,
+          quality: quality
+        }),
       });
 
       const text = await response.text();
@@ -481,20 +486,25 @@ Style to emulate: `;
           <motion.div 
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-4"
+            className="flex items-center gap-2 sm:gap-4"
           >
             <button 
               onClick={() => setIsLoginSliderOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+              className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 transition-all active:scale-95 group shadow-lg shadow-black/20"
             >
-              {user && user.photoURL ? (
-                <img src={user.photoURL} alt="User" className="w-8 h-8 rounded-full border border-neon-blue/50" />
-              ) : (
-                <UserCircle className="w-6 h-6 text-neon-blue" />
-              )}
-              <span className="hidden sm:inline font-medium">{user ? user.displayName?.split(' ')[0] : 'Login'}</span>
+              <div className="relative">
+                {user && user.photoURL ? (
+                  <img src={user.photoURL} alt="User" className="w-6 h-6 sm:w-8 sm:h-8 rounded-full border border-neon-blue/50 group-hover:border-neon-blue transition-colors" />
+                ) : (
+                  <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-neon-blue/10 flex items-center justify-center border border-neon-blue/30 group-hover:border-neon-blue/60 transition-colors">
+                    <UserCircle className="w-4 h-4 sm:w-5 sm:h-5 text-neon-blue" />
+                  </div>
+                )}
+                {user && <div className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full border border-black" />}
+              </div>
+              <span className="hidden sm:inline font-bold text-sm tracking-tight">{user ? user.displayName?.split(' ')[0] : 'Join Elite'}</span>
             </button>
-            <button onClick={() => setIsMenuOpen(true)} className="p-2 text-white/60 hover:text-white transition-colors">
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 text-white/60 hover:text-white transition-colors active:scale-90">
               <Menu className="w-6 h-6" />
             </button>
           </motion.div>
@@ -526,45 +536,70 @@ Style to emulate: `;
             {activeTab === 'generator' && (
               <div className="max-w-4xl mx-auto mb-24">
           
-          {/* Controls: Size Selector & Enhance Toggle */}
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
-            <div className="flex gap-2 bg-white/5 p-1.5 rounded-2xl border border-white/10 shadow-lg">
-              {[
-                { label: "1:1", value: "1024*1024" },
-                { label: "16:9", value: "1280*720" },
-                { label: "9:16", value: "720*1280" }
-              ].map((size) => (
-                <button
-                  key={size.value}
-                  onClick={() => setSelectedSize(size.value)}
-                  className={`px-3 py-2 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 ${
-                    selectedSize === size.value 
-                      ? 'bg-neon-blue text-black shadow-[0_0_15px_rgba(0,255,255,0.4)]' 
-                      : 'text-white/50 hover:text-white hover:bg-white/10'
-                  }`}
-                >
-                  <Maximize className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
-                  <span className="whitespace-nowrap">{size.label}</span>
-                </button>
-              ))}
+          {/* Controls: Size Selector & Quality & Enhance Toggle */}
+          <div className="flex flex-col gap-4 mb-6">
+            <div className="flex flex-wrap justify-between items-center gap-4">
+              <div className="flex gap-2 bg-white/5 p-1.5 rounded-2xl border border-white/10 shadow-lg overflow-x-auto scrollbar-hide">
+                {[
+                  { label: "1:1", value: "1024*1024" },
+                  { label: "16:9", value: "1280*720" },
+                  { label: "9:16", value: "720*1280" }
+                ].map((size) => (
+                  <button
+                    key={size.value}
+                    onClick={() => setSelectedSize(size.value)}
+                    className={`px-3 py-2 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${
+                      selectedSize === size.value 
+                        ? 'bg-neon-blue text-black shadow-[0_0_15px_rgba(0,255,255,0.4)]' 
+                        : 'text-white/50 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <Maximize className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                    <span>{size.label}</span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-2 bg-white/5 p-1.5 rounded-2xl border border-white/10 shadow-lg overflow-x-auto scrollbar-hide">
+                {[
+                  { label: "Standard", value: "standard" },
+                  { label: "HD", value: "hd" },
+                  { label: "Ultra", value: "ultra" }
+                ].map((q) => (
+                  <button
+                    key={q.value}
+                    onClick={() => setQuality(q.value)}
+                    className={`px-3 py-2 sm:px-4 sm:py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 sm:gap-2 whitespace-nowrap ${
+                      quality === q.value 
+                        ? 'bg-neon-purple text-white shadow-[0_0_15px_rgba(176,38,255,0.4)]' 
+                        : 'text-white/50 hover:text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <Zap className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                    <span>{q.label}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <button 
-              onClick={() => setIsEnhanceEnabled(!isEnhanceEnabled)} 
-              className={`flex items-center gap-3 px-5 py-2.5 rounded-2xl border transition-all duration-300 ${
-                isEnhanceEnabled 
-                  ? 'bg-neon-purple/10 border-neon-purple/50 shadow-[0_0_20px_rgba(176,38,255,0.2)]' 
-                  : 'glass border-white/10 hover:bg-white/5'
-              }`}
-            >
-              <Wand2 className={`w-4 h-4 ${isEnhanceEnabled ? 'text-neon-purple animate-pulse' : 'text-white/40'}`} />
-              <span className={`text-sm font-bold ${isEnhanceEnabled ? 'text-neon-purple' : 'text-white/50'}`}>
-                Bol-AI Enhance
-              </span>
-              <div className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-300 ${isEnhanceEnabled ? 'bg-neon-purple' : 'bg-white/20'}`}>
-                <div className={`w-4 h-4 rounded-full bg-white transition-transform duration-300 shadow-sm ${isEnhanceEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
-              </div>
-            </button>
+            <div className="flex justify-end">
+              <button 
+                onClick={() => setIsEnhanceEnabled(!isEnhanceEnabled)} 
+                className={`flex items-center gap-3 px-5 py-2.5 rounded-2xl border transition-all duration-300 ${
+                  isEnhanceEnabled 
+                    ? 'bg-neon-purple/10 border-neon-purple/50 shadow-[0_0_20px_rgba(176,38,255,0.2)]' 
+                    : 'glass border-white/10 hover:bg-white/5'
+                }`}
+              >
+                <Wand2 className={`w-4 h-4 ${isEnhanceEnabled ? 'text-neon-purple animate-pulse' : 'text-white/40'}`} />
+                <span className={`text-sm font-bold ${isEnhanceEnabled ? 'text-neon-purple' : 'text-white/50'}`}>
+                  Bol-AI Enhance
+                </span>
+                <div className={`w-10 h-5 rounded-full p-0.5 transition-colors duration-300 ${isEnhanceEnabled ? 'bg-neon-purple' : 'bg-white/20'}`}>
+                  <div className={`w-4 h-4 rounded-full bg-white transition-transform duration-300 shadow-sm ${isEnhanceEnabled ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
+              </button>
+            </div>
           </div>
 
           <motion.div 
@@ -1070,7 +1105,7 @@ Style to emulate: `;
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 h-full w-full max-w-sm bg-black/80 backdrop-blur-2xl border-l border-white/10 z-50 p-8 flex flex-col shadow-[-20px_0_50px_rgba(0,0,0,0.5)]"
+              className="fixed top-0 right-0 h-full w-full max-w-sm bg-black/90 backdrop-blur-2xl border-l border-white/10 z-50 p-8 flex flex-col shadow-[-20px_0_50px_rgba(0,0,0,0.5)] overflow-y-auto scrollbar-hide"
             >
               <button 
                 onClick={() => setIsLoginSliderOpen(false)}
@@ -1150,38 +1185,41 @@ Style to emulate: `;
                   </>
                 )}
 
-                <div className="mt-12 w-full space-y-6 text-left">
+                <div className="mt-12 w-full space-y-6 text-left pb-12">
                   <div className="p-6 glass rounded-3xl border border-white/5 hover:border-neon-blue/20 transition-all group">
                     <h4 className="text-lg font-bold text-white flex items-center gap-2 mb-3">
                       <Info className="w-4 h-4 text-neon-blue" /> About Bol-AI
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
-                      Bol-AI is a premium 8K image generation engine designed for professionals. We use advanced neural networks to turn your imagination into high-fidelity digital art instantly.
+                      Bol-AI is the world's most advanced 8K image generation engine. Built on proprietary neural architectures, we empower creators to manifest their wildest imaginations into hyper-realistic digital masterpieces. Our mission is to democratize high-end AI art through speed, precision, and unparalleled visual fidelity.
                     </p>
                   </div>
 
                   <div className="p-6 glass rounded-3xl border border-white/5 hover:border-neon-purple/20 transition-all group">
                     <h4 className="text-lg font-bold text-white flex items-center gap-2 mb-3">
-                      <AlertTriangle className="w-4 h-4 text-neon-purple" /> Privacy First
+                      <ShieldCheck className="w-4 h-4 text-neon-purple" /> Privacy Policy
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
-                      Your prompts are encrypted. We never share your personal data or creations without your permission. Your creativity is safe in our secure cloud.
+                      We take your privacy seriously. All prompts are processed through end-to-end encrypted tunnels. We do not store your personal data beyond what is necessary for authentication. Your creations remain your intellectual property, and we never use them to train our models without explicit consent.
                     </p>
                   </div>
 
                   <div className="p-6 glass rounded-3xl border border-white/5 hover:border-white/20 transition-all group">
                     <h4 className="text-lg font-bold text-white flex items-center gap-2 mb-3">
-                      <UserCircle className="w-4 h-4 text-white" /> Contact Support
+                      <Mail className="w-4 h-4 text-white" /> Contact Us
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed mb-4">
-                      Need help? Our elite support team is available 24/7 for our users.
+                      Have questions or need technical support? Our dedicated team is here to help you 24/7. Reach out to us for enterprise solutions or general inquiries.
                     </p>
-                    <a href="mailto:vivekdalvi147@gmail.com" className="text-sm font-bold text-neon-blue hover:underline">vivekdalvi147@gmail.com</a>
+                    <a href="mailto:vivekdalvi147@gmail.com" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-neon-blue/10 text-neon-blue font-bold text-xs hover:bg-neon-blue/20 transition-colors">
+                      <Mail className="w-3 h-3" /> vivekdalvi147@gmail.com
+                    </a>
                   </div>
 
-                  <div className="pt-8 text-center">
-                    <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.3em]">Developed by</p>
-                    <p className="text-sm font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Vivek Dalvi</p>
+                  <div className="pt-8 text-center border-t border-white/5">
+                    <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.3em] mb-2">Developed by</p>
+                    <p className="text-lg font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Vivek Dalvi</p>
+                    <p className="text-[10px] text-white/40 mt-2">© 2026 Bol-AI. All rights reserved.</p>
                   </div>
                 </div>
               </div>
