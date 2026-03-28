@@ -9,14 +9,14 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-// Rate Limiting: 2 requests per second per user (IP)
+// Rate Limiting: Configurable per IP
 interface RateLimitData {
   count: number;
   resetTime: number;
 }
 const ipRequests = new Map<string, RateLimitData>();
-const WINDOW_MS = 1000; // 1 second
-const MAX_REQUESTS_PER_WINDOW = 2;
+const WINDOW_MS = 60000; // 1 minute window
+const DEFAULT_MAX_REQUESTS = 5; // 5 requests per minute
 
 const rateLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
@@ -25,14 +25,13 @@ const rateLimiter = (req: express.Request, res: express.Response, next: express.
   let data = ipRequests.get(ip);
   
   if (!data || now > data.resetTime) {
-    // Reset or initialize window
     data = { count: 1, resetTime: now + WINDOW_MS };
     ipRequests.set(ip, data);
     return next();
   }
   
-  if (data.count >= MAX_REQUESTS_PER_WINDOW) {
-    return res.status(429).json({ error: "Too many requests. Limit is 2 requests per second." });
+  if (data.count >= DEFAULT_MAX_REQUESTS) {
+    return res.status(429).json({ error: "Too many requests. Please wait a minute before trying again." });
   }
   
   data.count++;
@@ -180,7 +179,7 @@ app.post("/api/generate", rateLimiter, async (req, res) => {
         model: "Tongyi-MAI/Z-Image-Turbo",
         prompt: userPrompt,
         parameters: {
-          size: imageSize
+          size: imageSize.replace(':', '*') // Ensure format is width*height
         }
       })
     }, 3, 2000);

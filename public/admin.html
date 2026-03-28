@@ -26,7 +26,25 @@
             border-left: 3px solid #00f0ff; 
             color: #00f0ff; 
             background: linear-gradient(to right, rgba(0, 240, 255, 0.1), transparent);
+            transform: translateZ(10px);
         }
+        .glass { 
+            background: rgba(5, 5, 5, 0.8); 
+            backdrop-filter: blur(24px); 
+            border: 1px solid rgba(0, 240, 255, 0.1); 
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8); 
+            transform-style: preserve-3d;
+            perspective: 1000px;
+        }
+        .card-3d {
+            transition: transform 0.3s ease;
+        }
+        .card-3d:hover {
+            transform: translateY(-10px) rotateX(5deg) rotateY(5deg);
+        }
+        .neon-text-blue { color: #00f0ff; text-shadow: 0 0 10px rgba(0, 240, 255, 0.5), 0 0 20px rgba(0, 240, 255, 0.2); }
+        .neon-text-purple { color: #b026ff; text-shadow: 0 0 10px rgba(176, 38, 255, 0.5), 0 0 20px rgba(176, 38, 255, 0.2); }
+        
         @media (max-width: 768px) {
             .tab-active {
                 border-left: none;
@@ -125,6 +143,7 @@
                 <button data-tab="dashboard" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap tab-active font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="layout-dashboard" class="w-4 h-4"></i> Overview</button>
                 <button data-tab="requests" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="activity" class="w-4 h-4"></i> Traffic</button>
                 <button data-tab="stats" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="bar-chart-2" class="w-4 h-4"></i> Stats</button>
+                <button data-tab="config" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="sliders" class="w-4 h-4"></i> Image Config</button>
                 <div class="mt-auto hidden md:block border-t border-white/10"></div>
                 <button data-tab="server" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="server" class="w-4 h-4"></i> Hardware</button>
                 <button data-tab="settings" class="tab-btn flex-1 md:flex-none text-left px-6 py-5 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-sm flex items-center gap-3"><i data-lucide="settings" class="w-4 h-4"></i> Settings</button>
@@ -137,15 +156,15 @@
                 <div id="tab-dashboard" class="tab-content space-y-8">
                     <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">System Overview</h2>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5">
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5 card-3d">
                             <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Today's Traffic</h3>
                             <p id="today-requests" class="text-4xl font-bold neon-text-blue font-mono">0</p>
                         </div>
-                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5">
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5 card-3d">
                             <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Total Traffic</h3>
                             <p id="total-requests" class="text-4xl font-bold neon-text-purple font-mono">0</p>
                         </div>
-                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5">
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5 card-3d">
                             <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Run Time</h3>
                             <p id="daily-run-time" class="text-4xl font-bold neon-text-red font-mono">0s</p>
                         </div>
@@ -174,6 +193,51 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+
+                <!-- Image Config Tab -->
+                <div id="tab-config" class="tab-content hidden space-y-8">
+                    <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">Image Generation Engine</h2>
+                    <div class="glass p-8 rounded-2xl max-w-2xl border border-white/10 space-y-8 card-3d">
+                        <div class="space-y-4">
+                            <h3 class="font-bold text-lg text-[#00f0ff] flex items-center gap-2"><i data-lucide="maximize" class="w-5 h-5"></i> Default Parameters</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Default Size</label>
+                                    <select id="config-default-size" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-blue transition-all font-mono text-sm">
+                                        <option value="1024*1024">1024 x 1024 (1:1)</option>
+                                        <option value="720*1280">720 x 1280 (9:16)</option>
+                                        <option value="1280*720">1280 x 720 (16:9)</option>
+                                        <option value="1024*1536">1024 x 1536 (2:3)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Generation Quality</label>
+                                    <select id="config-quality" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-blue transition-all font-mono text-sm">
+                                        <option value="standard">Standard (Fast)</option>
+                                        <option value="hd">HD (High Quality)</option>
+                                        <option value="ultra">Ultra 8K (Elite)</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="space-y-4 pt-6 border-t border-white/5">
+                            <h3 class="font-bold text-lg text-[#b026ff] flex items-center gap-2"><i data-lucide="shield-check" class="w-5 h-5"></i> Security & Limits</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Rate Limit (Req/Min)</label>
+                                    <input type="number" id="config-rate-limit" value="5" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-purple transition-all font-mono text-sm">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Max Concurrent</label>
+                                    <input type="number" id="config-max-concurrent" value="2" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-purple transition-all font-mono text-sm">
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="save-config-btn" class="w-full bg-gradient-to-r from-neon-blue to-neon-purple text-black font-bold py-4 rounded-xl hover:opacity-90 transition-all uppercase tracking-widest text-sm shadow-[0_0_30px_rgba(0,240,255,0.2)]">Update Engine Config</button>
                     </div>
                 </div>
 
@@ -514,21 +578,34 @@
                         <td colspan="5" class="px-6 py-6 border-b border-white/5">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div class="space-y-3">
-                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Full Prompt</p>
-                                    <p class="text-sm text-white/80 leading-relaxed bg-black/30 p-4 rounded-lg border border-white/5">${data.prompt}</p>
-                                    <div class="flex gap-4 text-[10px]">
+                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Prompt Analysis</p>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <p class="text-[9px] text-neon-blue font-bold uppercase mb-1">User Original</p>
+                                            <p class="text-xs text-white/80 leading-relaxed bg-black/30 p-3 rounded-lg border border-white/5">${data.prompt}</p>
+                                        </div>
+                                        ${data.enhancedPrompt ? `
+                                        <div>
+                                            <p class="text-[9px] text-neon-purple font-bold uppercase mb-1">AI Enhanced (8K)</p>
+                                            <p class="text-xs text-white/80 leading-relaxed bg-black/30 p-3 rounded-lg border border-white/5 italic">${data.enhancedPrompt}</p>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                    <div class="flex gap-4 text-[10px] pt-4">
                                         <p><span class="text-white/40">USER ID:</span> ${data.userId || 'N/A'}</p>
                                         <p><span class="text-white/40">EMAIL:</span> ${data.userEmail || 'N/A'}</p>
                                     </div>
                                 </div>
                                 <div class="space-y-3">
-                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Output</p>
+                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Output Render</p>
                                     ${data.imageUrl ? `
-                                        <div class="relative group">
-                                            <img src="${data.imageUrl}" class="w-full max-w-xs rounded-lg border border-white/10 shadow-lg">
-                                            <a href="${data.imageUrl}" target="_blank" class="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all rounded-lg">
-                                                <span class="text-xs font-bold uppercase tracking-widest">View Full Size</span>
-                                            </a>
+                                        <div class="relative group max-w-xs">
+                                            <img src="${data.imageUrl}" 
+                                                 onerror="this.src='https://placehold.co/600x400/000000/00f0ff?text=Image+Expired+or+Private'"
+                                                 class="w-full rounded-lg border border-white/10 shadow-[0_0_30px_rgba(0,0,0,0.5)] group-hover:scale-[1.02] transition-transform duration-500">
+                                            <div class="absolute inset-0 flex items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-all rounded-lg backdrop-blur-sm">
+                                                <a href="${data.imageUrl}" target="_blank" class="px-6 py-2 bg-neon-blue text-black font-bold text-[10px] uppercase tracking-widest rounded-full shadow-[0_0_20px_rgba(0,240,255,0.5)]">Open Original</a>
+                                            </div>
                                         </div>
                                     ` : '<p class="text-xs text-white/20 italic">No output generated</p>'}
                                 </div>
@@ -563,16 +640,51 @@
             const settingsRef = doc(db, 'settings', 'general');
             onSnapshot(settingsRef, (docSnap) => {
                 if (docSnap.exists()) {
-                    const mode = docSnap.data().maintenanceMode;
+                    const data = docSnap.data();
+                    const mode = data.maintenanceMode;
                     const select = document.getElementById('maintenance-select');
                     if (mode === true || mode === 1 || mode === '1') select.value = '1';
                     else if (mode === 2 || mode === '2') select.value = '2';
                     else select.value = '0';
+
+                    // Load Config
+                    if (data.defaultSize) document.getElementById('config-default-size').value = data.defaultSize;
+                    if (data.quality) document.getElementById('config-quality').value = data.quality;
+                    if (data.rateLimit) document.getElementById('config-rate-limit').value = data.rateLimit;
+                    if (data.maxConcurrent) document.getElementById('config-max-concurrent').value = data.maxConcurrent;
                 }
             }, (error) => {
                 console.error("Error fetching settings:", error);
             });
         }
+
+        // Save Config
+        document.getElementById('save-config-btn').addEventListener('click', async () => {
+            const size = document.getElementById('config-default-size').value;
+            const quality = document.getElementById('config-quality').value;
+            const rateLimit = parseInt(document.getElementById('config-rate-limit').value);
+            const maxConcurrent = parseInt(document.getElementById('config-max-concurrent').value);
+            
+            const btn = document.getElementById('save-config-btn');
+            const originalText = btn.textContent;
+
+            try {
+                btn.textContent = 'Updating...';
+                btn.disabled = true;
+                await setDoc(doc(db, 'settings', 'general'), {
+                    defaultSize: size,
+                    quality: quality,
+                    rateLimit: rateLimit,
+                    maxConcurrent: maxConcurrent
+                }, { merge: true });
+                alert('Engine configuration updated successfully!');
+            } catch (err) {
+                alert('Update failed: ' + err.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        });
 
         // Make deleteRequest available globally
         window.deleteRequest = async (reqId) => {

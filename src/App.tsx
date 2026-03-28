@@ -262,6 +262,24 @@ Style to emulate: `;
     setIsPromptExpanded(false);
 
     let finalPrompt = isUiMode ? `${UI_DESIGN_PROMPT_PREFIX}${prompt}` : prompt;
+    const originalUserPrompt = prompt;
+    let currentRequestId: string | null = null;
+
+    try {
+      // Track request in Firestore
+      const reqRef = await addDoc(collection(db, 'requests'), {
+        userId: user ? user.uid : 'anonymous',
+        userEmail: user ? user.email : 'anonymous',
+        userIp: userIp,
+        prompt: originalUserPrompt,
+        enhancedPrompt: isEnhanceEnabled ? null : originalUserPrompt, // Will be updated if enhanced
+        status: 'active',
+        createdAt: serverTimestamp()
+      });
+      currentRequestId = reqRef.id;
+    } catch (e) {
+      console.error("Failed to create request tracking doc", e);
+    }
 
     if (isEnhanceEnabled) {
       setIsEnhancing(true);
@@ -278,6 +296,12 @@ Style to emulate: `;
           if (enhanceData.enhancedPrompt) {
             finalPrompt = enhanceData.enhancedPrompt;
             setEnhancedPrompt(finalPrompt);
+            // Update request with enhanced prompt
+            if (currentRequestId) {
+              updateDoc(doc(db, 'requests', currentRequestId), {
+                enhancedPrompt: finalPrompt
+              }).catch(console.error);
+            }
           }
         } else {
           console.warn("Prompt enhancement failed, using original prompt.");
@@ -289,24 +313,7 @@ Style to emulate: `;
     }
 
     setIsGenerating(true);
-
-    let currentRequestId: string | null = null;
     const startTime = Date.now();
-    try {
-      // Track request in Firestore
-      const reqRef = await addDoc(collection(db, 'requests'), {
-        userId: user ? user.uid : 'anonymous',
-        userEmail: user ? user.email : 'anonymous',
-        userIp: userIp,
-        prompt: finalPrompt,
-        status: 'active',
-        createdAt: serverTimestamp()
-      });
-      currentRequestId = reqRef.id;
-    } catch (e) {
-      console.error("Failed to create request tracking doc", e);
-    }
-
     try {
       // Step 2: Generate Image
       const response = await fetch('/api/generate', {
@@ -1073,19 +1080,20 @@ Style to emulate: `;
               </button>
 
               <div className="mt-12 flex flex-col items-center text-center">
-                <div className="w-16 h-16 bg-gradient-to-br from-neon-blue to-neon-purple rounded-2xl flex items-center justify-center shadow-lg shadow-neon-blue/20 mb-6">
-                  <Sparkles className="text-white w-8 h-8" />
+                <div className="w-20 h-20 bg-gradient-to-br from-neon-blue via-neon-purple to-neon-blue rounded-2xl flex items-center justify-center shadow-[0_0_30px_rgba(0,255,255,0.3)] mb-6 animate-pulse">
+                  <Sparkles className="text-white w-10 h-10" />
                 </div>
-                <h2 className="text-3xl font-display font-bold tracking-tight mb-2">
+                <h2 className="text-4xl font-display font-bold tracking-tighter mb-2">
                   BOL-<span className="text-neon-blue">AI</span>
                 </h2>
+                <p className="text-[10px] text-neon-purple font-bold tracking-[0.2em] uppercase mb-8">Next-Gen Image Engine</p>
                 
                 {!user ? (
                   <>
-                    <p className="text-white/60 mb-8">
+                    <p className="text-white/60 mb-8 text-sm leading-relaxed">
                       {generationsCount >= 3 
-                        ? "You've reached your 3 free images limit. Please log in to continue creating masterpieces!" 
-                        : "Log in to unlock unlimited image generation and save your creations."}
+                        ? "You've reached your 3 free images limit. Join the elite to continue creating masterpieces!" 
+                        : "Log in to unlock unlimited 8K image generation and save your creations to the cloud."}
                     </p>
                     <button 
                       onClick={async () => {
@@ -1096,7 +1104,7 @@ Style to emulate: `;
                           console.error("Login failed:", error);
                         }
                       }}
-                      className="w-full py-4 px-6 rounded-xl bg-white text-black font-bold flex items-center justify-center gap-3 hover:bg-white/90 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.2)]"
+                      className="w-full py-4 px-6 rounded-2xl bg-white text-black font-bold flex items-center justify-center gap-3 hover:scale-[1.02] transition-all shadow-[0_0_30px_rgba(255,255,255,0.3)] active:scale-95"
                     >
                       <svg className="w-6 h-6" viewBox="0 0 24 24">
                         <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
@@ -1106,30 +1114,76 @@ Style to emulate: `;
                       </svg>
                       Continue with Google
                     </button>
-                    <div className="mt-6 text-sm text-white/40 font-medium">
-                      Free generations used: <span className="text-white">{generationsCount} / 3</span>
+                    <div className="mt-8 p-4 glass rounded-2xl border border-white/5 w-full">
+                      <p className="text-[10px] text-white/40 font-bold uppercase tracking-widest mb-1">Usage Status</p>
+                      <div className="flex justify-between items-end">
+                        <span className="text-white font-mono text-lg">{generationsCount} <span className="text-xs text-white/30">/ 3</span></span>
+                        <div className="w-24 h-1 bg-white/10 rounded-full overflow-hidden">
+                          <div className="h-full bg-neon-blue" style={{ width: `${(generationsCount / 3) * 100}%` }} />
+                        </div>
+                      </div>
                     </div>
                   </>
                 ) : (
                   <>
-                    <div className="mb-6 flex flex-col items-center">
-                      {user.photoURL && (
-                        <img src={user.photoURL} alt="Profile" className="w-24 h-24 rounded-full border-4 border-neon-blue/30 mb-4 shadow-[0_0_30px_rgba(0,255,255,0.2)]" />
-                      )}
-                      <h3 className="text-xl font-bold">{user.displayName}</h3>
-                      <p className="text-white/60">{user.email}</p>
+                    <div className="mb-8 flex flex-col items-center">
+                      <div className="relative">
+                        {user.photoURL && (
+                          <img src={user.photoURL} alt="Profile" className="w-24 h-24 rounded-full border-4 border-neon-blue/30 mb-4 shadow-[0_0_40px_rgba(0,255,255,0.3)]" />
+                        )}
+                        <div className="absolute -bottom-2 -right-2 w-8 h-8 bg-green-500 rounded-full border-4 border-black flex items-center justify-center">
+                          <div className="w-2 h-2 bg-white rounded-full animate-ping" />
+                        </div>
+                      </div>
+                      <h3 className="text-2xl font-bold text-white">{user.displayName}</h3>
+                      <p className="text-white/40 text-sm font-mono">{user.email}</p>
                     </div>
                     <button 
                       onClick={async () => {
                         await signOut(auth);
                       }}
-                      className="w-full py-4 px-6 rounded-xl bg-red-500/10 border border-red-500/30 text-red-500 font-bold flex items-center justify-center gap-3 hover:bg-red-500/20 transition-colors"
+                      className="w-full py-4 px-6 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-500 font-bold flex items-center justify-center gap-3 hover:bg-red-500/20 transition-all active:scale-95"
                     >
                       <LogOut className="w-5 h-5" />
                       Sign Out
                     </button>
                   </>
                 )}
+
+                <div className="mt-12 w-full space-y-6 text-left">
+                  <div className="p-6 glass rounded-3xl border border-white/5 hover:border-neon-blue/20 transition-all group">
+                    <h4 className="text-lg font-bold text-white flex items-center gap-2 mb-3">
+                      <Info className="w-4 h-4 text-neon-blue" /> About Bol-AI
+                    </h4>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      Bol-AI is a premium 8K image generation engine designed for professionals. We use advanced neural networks to turn your imagination into high-fidelity digital art instantly.
+                    </p>
+                  </div>
+
+                  <div className="p-6 glass rounded-3xl border border-white/5 hover:border-neon-purple/20 transition-all group">
+                    <h4 className="text-lg font-bold text-white flex items-center gap-2 mb-3">
+                      <AlertTriangle className="w-4 h-4 text-neon-purple" /> Privacy First
+                    </h4>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      Your prompts are encrypted. We never share your personal data or creations without your permission. Your creativity is safe in our secure cloud.
+                    </p>
+                  </div>
+
+                  <div className="p-6 glass rounded-3xl border border-white/5 hover:border-white/20 transition-all group">
+                    <h4 className="text-lg font-bold text-white flex items-center gap-2 mb-3">
+                      <UserCircle className="w-4 h-4 text-white" /> Contact Support
+                    </h4>
+                    <p className="text-xs text-white/50 leading-relaxed mb-4">
+                      Need help? Our elite support team is available 24/7 for our users.
+                    </p>
+                    <a href="mailto:vivekdalvi147@gmail.com" className="text-sm font-bold text-neon-blue hover:underline">vivekdalvi147@gmail.com</a>
+                  </div>
+
+                  <div className="pt-8 text-center">
+                    <p className="text-[10px] text-white/20 font-bold uppercase tracking-[0.3em]">Developed by</p>
+                    <p className="text-sm font-display font-bold text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Vivek Dalvi</p>
+                  </div>
+                </div>
               </div>
             </motion.div>
           </>
