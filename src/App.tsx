@@ -733,7 +733,7 @@ Style to emulate: `;
                 className="mt-12"
               >
                 <div 
-                  className="glass rounded-[2rem] overflow-hidden relative group flex items-center justify-center bg-black/20 mx-auto transition-all duration-500"
+                  className="glass rounded-[2rem] overflow-hidden relative group flex items-center justify-center bg-black/60 mx-auto transition-all duration-500"
                   style={{
                     aspectRatio: selectedSize === "1280*720" ? "16/9" : selectedSize === "720*1280" ? "9/16" : "1/1",
                     maxHeight: "80vh",
@@ -742,7 +742,7 @@ Style to emulate: `;
                   }}
                 >
                   {isGenerating ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/60 backdrop-blur-md p-6 text-center">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-black/90 backdrop-blur-md p-6 text-center">
                       <div className="relative">
                         <div className="w-20 h-20 border-4 border-neon-blue/20 border-t-neon-blue rounded-full animate-spin" />
                         <Sparkles className="absolute inset-0 m-auto text-neon-blue w-8 h-8 animate-pulse" />
@@ -750,7 +750,7 @@ Style to emulate: `;
                       <p className="text-neon-blue font-bold tracking-widest uppercase text-sm mt-2">Generating Masterpiece...</p>
                       
                       {/* Progress Bar */}
-                      <div className="w-full max-w-xs bg-white/10 rounded-full h-1.5 mt-2 overflow-hidden">
+                      <div className="w-full max-w-xs bg-black/40 rounded-full h-1.5 mt-2 overflow-hidden border border-white/5">
                         <motion.div 
                           className="bg-gradient-to-r from-neon-blue to-neon-purple h-full" 
                           initial={{ width: "0%" }} 
@@ -1169,9 +1169,6 @@ Style to emulate: `;
                             {user.displayName?.charAt(0) || user.email?.charAt(0) || '?'}
                           </div>
                         )}
-                        <div className="absolute bottom-2 right-2 w-6 h-6 bg-green-500 rounded-full border-2 border-black flex items-center justify-center shadow-[0_0_15px_rgba(34,197,94,0.5)]">
-                          <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
-                        </div>
                       </div>
                       <h3 className="text-2xl font-bold text-white">{user.displayName}</h3>
                       <p className="text-white/40 text-sm font-mono">{user.email}</p>
