@@ -51,5 +51,12 @@ service cloud.firestore {
       // Only admin can write settings
       allow write: if isAdmin();
     }
+    match /examples/{docId} {
+      // Anyone can read examples
+      allow read: if true;
+      
+      // Only admin can write examples
+      allow write: if isAdmin();
+    }
   }
 }

@@ -40,7 +40,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'generator' | 'gallery' | 'my-creations'>('generator');
   const [myImages, setMyImages] = useState<any[]>([]);
   const [sharedImage, setSharedImage] = useState<any>(null);
-  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [maintenanceMode, setMaintenanceMode] = useState(0); // 0: Off, 1: Full, 2: Soft
+  const [userIp, setUserIp] = useState<string>('unknown');
+  const [activePage, setActivePage] = useState<'home' | 'about' | 'privacy' | 'contact'>('home');
+  const [exampleImages, setExampleImages] = useState<string[]>(EXAMPLE_IMAGES);
   const [generationsCount, setGenerationsCount] = useState(() => {
     const saved = localStorage.getItem('bol_ai_generations');
     return saved ? parseInt(saved, 10) : 0;
@@ -49,10 +52,35 @@ export default function App() {
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) {
-        setIsMaintenanceMode(docSnap.data().maintenanceMode || false);
+        setMaintenanceMode(docSnap.data().maintenanceMode || 0);
       }
     });
     return () => unsub();
+  }, []);
+
+  useEffect(() => {
+    const fetchExamples = async () => {
+      try {
+        const q = query(collection(db, 'examples'), orderBy('createdAt', 'desc'));
+        const snapshot = await getDocs(q);
+        const fetchedExamples = snapshot.docs.map(d => d.data().imageUrl);
+        setExampleImages([...EXAMPLE_IMAGES, ...fetchedExamples]);
+      } catch (e: any) {
+        console.warn("Could not fetch examples from Firestore (check rules). Using defaults.", e.message);
+        setExampleImages([...EXAMPLE_IMAGES]);
+      }
+    };
+    fetchExamples();
+  }, []);
+
+  useEffect(() => {
+    fetch('https://api.ipify.org?format=json')
+      .then(res => res.json())
+      .then(data => setUserIp(data.ip))
+      .catch((e) => {
+        console.warn("Could not fetch IP:", e.message);
+        setUserIp('unknown');
+      });
   }, []);
 
   useEffect(() => {
@@ -106,8 +134,8 @@ export default function App() {
       });
       
       setMyImages(images);
-    } catch (e) {
-      console.error("Failed to fetch my images:", e);
+    } catch (e: any) {
+      console.warn("Could not fetch my images from Firestore (check rules).", e.message);
     }
   };
 
@@ -131,8 +159,8 @@ export default function App() {
     localStorage.setItem('bol_ai_generations', generationsCount.toString());
   }, [generationsCount]);
 
-  const nextGalleryImage = () => setGalleryIndex((prev) => (prev + 1) % EXAMPLE_IMAGES.length);
-  const prevGalleryImage = () => setGalleryIndex((prev) => (prev - 1 + EXAMPLE_IMAGES.length) % EXAMPLE_IMAGES.length);
+  const nextGalleryImage = () => setGalleryIndex((prev) => (prev + 1) % exampleImages.length);
+  const prevGalleryImage = () => setGalleryIndex((prev) => (prev - 1 + exampleImages.length) % exampleImages.length);
 
   const handleDownload = async (url: string) => {
     try {
@@ -215,6 +243,12 @@ Style to emulate: `;
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     
+    if (maintenanceMode === 1) return;
+    if (maintenanceMode === 2) {
+      setError("Bol-AI Server Error: Our servers are currently experiencing high load or undergoing maintenance. Please try again later. Thanks for understanding.");
+      return;
+    }
+
     if (!user && generationsCount >= 3) {
       setIsLoginSliderOpen(true);
       return;
@@ -257,11 +291,13 @@ Style to emulate: `;
     setIsGenerating(true);
 
     let currentRequestId: string | null = null;
+    const startTime = Date.now();
     try {
       // Track request in Firestore
       const reqRef = await addDoc(collection(db, 'requests'), {
         userId: user ? user.uid : 'anonymous',
         userEmail: user ? user.email : 'anonymous',
+        userIp: userIp,
         prompt: finalPrompt,
         status: 'active',
         createdAt: serverTimestamp()
@@ -324,60 +360,57 @@ Style to emulate: `;
             setGeneratedSize(selectedSize);
             isComplete = true;
             
+            const endTime = Date.now();
+            const durationMs = endTime - startTime;
+
+            // Upload to ImgBB for ALL users
+            let finalDisplayUrl = finalImageUrl;
+            try {
+              const imgbbRes = await fetch('/api/upload-imgbb', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageUrl: finalImageUrl })
+              });
+              const imgbbData = await imgbbRes.json();
+              if (imgbbData.success) {
+                finalDisplayUrl = imgbbData.data.url;
+                setGeneratedImage(finalDisplayUrl); // Update UI with ImgBB URL
+              }
+            } catch (e) {
+              console.error("ImgBB Upload Failed", e);
+            }
+
+            // Save to Firestore for ALL users (so admin can see it)
+            try {
+              const newGen = {
+                userId: user ? user.uid : 'anonymous',
+                userEmail: user ? user.email : 'anonymous',
+                userIp: userIp,
+                prompt: finalPrompt,
+                imageUrl: finalDisplayUrl,
+                size: selectedSize,
+                createdAt: serverTimestamp()
+              };
+              const docRef = await addDoc(collection(db, 'generations'), newGen);
+              console.log("Image saved to Firestore successfully!");
+              if (user) {
+                setMyImages(prev => [{ id: docRef.id, ...newGen }, ...prev]);
+              }
+            } catch (dbError) {
+              console.error("Failed to save to Firestore:", dbError);
+            }
+
             if (!user) {
               setGenerationsCount(prev => prev + 1);
-              
-              // Update request status to completed for anonymous users
-              if (currentRequestId) {
-                updateDoc(doc(db, 'requests', currentRequestId), {
-                  status: 'completed',
-                  imageUrl: finalImageUrl
-                }).catch(console.error);
-              }
-            } else {
-              // Upload to ImgBB for logged-in users
-              let finalDisplayUrl = finalImageUrl;
-              try {
-                const imgbbRes = await fetch('/api/upload-imgbb', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ imageUrl: finalImageUrl })
-                });
-                const imgbbData = await imgbbRes.json();
-                if (imgbbData.success) {
-                  finalDisplayUrl = imgbbData.data.url;
-                  setGeneratedImage(finalDisplayUrl); // Update UI with ImgBB URL
-                }
-              } catch (e) {
-                console.error("ImgBB Upload Failed", e);
-              }
+            }
 
-              // Save to Firestore
-              try {
-                const newGen = {
-                  userId: user.uid,
-                  userEmail: user.email,
-                  prompt: finalPrompt,
-                  imageUrl: finalDisplayUrl,
-                  size: selectedSize,
-                  createdAt: serverTimestamp()
-                };
-                const docRef = await addDoc(collection(db, 'generations'), newGen);
-                console.log("Image saved to Firestore successfully!");
-                // Update UI immediately so it shows in My Creations
-                setMyImages(prev => [{ id: docRef.id, ...newGen }, ...prev]);
-              } catch (dbError) {
-                console.error("Failed to save to Firestore:", dbError);
-                // We don't throw here because the image was generated successfully
-              }
-              
-              // Update request status to completed for logged in users
-              if (currentRequestId) {
-                updateDoc(doc(db, 'requests', currentRequestId), {
-                  status: 'completed',
-                  imageUrl: finalDisplayUrl
-                }).catch(console.error);
-              }
+            // Update request status to completed
+            if (currentRequestId) {
+              updateDoc(doc(db, 'requests', currentRequestId), {
+                status: 'completed',
+                imageUrl: finalDisplayUrl,
+                durationMs: durationMs
+              }).catch(console.error);
             }
           } else {
             throw new Error("Bol-AI succeeded but returned no images.");
@@ -418,7 +451,8 @@ Style to emulate: `;
         <motion.div 
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="flex items-center gap-3"
+          className="flex items-center gap-3 cursor-pointer"
+          onClick={() => setActivePage('home')}
         >
           <div className="w-10 h-10 bg-gradient-to-br from-neon-blue to-neon-purple rounded-xl flex items-center justify-center shadow-lg shadow-neon-blue/20">
             <Sparkles className="text-white w-6 h-6" />
@@ -430,10 +464,10 @@ Style to emulate: `;
 
         <div className="flex items-center gap-4 md:gap-8">
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-white/60">
-            <button onClick={() => setActiveTab('generator')} className={`transition-colors ${activeTab === 'generator' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>Generator</button>
-            <button onClick={() => setActiveTab('gallery')} className={`transition-colors ${activeTab === 'gallery' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>Gallery</button>
+            <button onClick={() => { setActiveTab('generator'); setActivePage('home'); }} className={`transition-colors ${activeTab === 'generator' && activePage === 'home' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>Generator</button>
+            <button onClick={() => { setActiveTab('gallery'); setActivePage('home'); }} className={`transition-colors ${activeTab === 'gallery' && activePage === 'home' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>Gallery</button>
             {user && (
-              <button onClick={() => setActiveTab('my-creations')} className={`transition-colors ${activeTab === 'my-creations' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>My Creations</button>
+              <button onClick={() => { setActiveTab('my-creations'); setActivePage('home'); }} className={`transition-colors ${activeTab === 'my-creations' && activePage === 'home' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>My Creations</button>
             )}
           </nav>
           
@@ -461,27 +495,29 @@ Style to emulate: `;
       </header>
 
       <main className="container mx-auto px-6 pt-12 pb-24">
-        <div className="max-w-4xl mx-auto text-center mb-16">
-          <motion.h2 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-5xl md:text-7xl font-display font-bold mb-6 leading-tight"
-          >
-            Create Amazing <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Images</span> With <br /> AI
-          </motion.h2>
-          <motion.p 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="text-white/50 text-lg max-w-2xl mx-auto"
-          >
-            Type what you want to see, and our advanced AI will create it for you instantly.
-          </motion.p>
-        </div>
+        {activePage === 'home' ? (
+          <>
+            <div className="max-w-4xl mx-auto text-center mb-16">
+              <motion.h2 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="text-5xl md:text-7xl font-display font-bold mb-6 leading-tight"
+              >
+                Create Amazing <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Images</span> With <br /> AI
+              </motion.h2>
+              <motion.p 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="text-white/50 text-lg max-w-2xl mx-auto"
+              >
+                Type what you want to see, and our advanced AI will create it for you instantly.
+              </motion.p>
+            </div>
 
-        {/* Generator Section */}
-        {activeTab === 'generator' && (
-          <div className="max-w-4xl mx-auto mb-24">
+            {/* Generator Section */}
+            {activeTab === 'generator' && (
+              <div className="max-w-4xl mx-auto mb-24">
           
           {/* Controls: Size Selector & Enhance Toggle */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
@@ -566,7 +602,7 @@ Style to emulate: `;
             </button>
             <button 
               onClick={handleGenerate}
-              disabled={isGenerating || isEnhancing || isMaintenanceMode}
+              disabled={isGenerating || isEnhancing || maintenanceMode === 1}
               className="bg-gradient-to-r from-neon-blue to-neon-purple px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
             >
               {isGenerating ? (
@@ -582,7 +618,7 @@ Style to emulate: `;
 
           {/* Maintenance Mode Warning */}
           <AnimatePresence>
-            {isMaintenanceMode && (
+            {maintenanceMode === 1 && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -734,7 +770,7 @@ Style to emulate: `;
           </div>
           
           <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6">
-            {EXAMPLE_IMAGES.map((img, idx) => (
+            {exampleImages.map((img, idx) => (
               <motion.div
                 key={idx}
                 initial={{ opacity: 0, y: 30 }}
@@ -825,7 +861,42 @@ Style to emulate: `;
               </div>
             )}
           </section>
-        )}
+          )}
+          </>
+        ) : activePage === 'about' ? (
+          <section className="max-w-4xl mx-auto py-12">
+            <h2 className="text-4xl font-display font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-white">About Us</h2>
+            <div className="glass p-8 rounded-3xl border border-white/10 space-y-6 text-white/80 leading-relaxed">
+              <p>Bol-AI is the world's most advanced AI image generation powerhouse. We bridge the gap between human imagination and digital reality.</p>
+              <p>Our mission is to empower creators, designers, and visionaries with cutting-edge artificial intelligence tools that transform ideas into stunning visual masterpieces instantly.</p>
+              <p>Built with state-of-the-art neural networks and optimized for speed and quality, Bol-AI represents the future of creative expression.</p>
+            </div>
+          </section>
+        ) : activePage === 'privacy' ? (
+          <section className="max-w-4xl mx-auto py-12">
+            <h2 className="text-4xl font-display font-bold mb-8 text-transparent bg-clip-text bg-gradient-to-r from-neon-purple to-white">Privacy Policy</h2>
+            <div className="glass p-8 rounded-3xl border border-white/10 space-y-6 text-white/80 leading-relaxed">
+              <p>At Bol-AI, your creativity is private. We employ end-to-end encryption for your prompts and never store your generated masterpieces without your explicit consent.</p>
+              <h3 className="text-xl font-bold text-white mt-8 mb-4">Data Collection</h3>
+              <p>We collect minimal data necessary to provide our services, including your IP address for security purposes and your email address if you choose to create an account.</p>
+              <h3 className="text-xl font-bold text-white mt-8 mb-4">Data Usage</h3>
+              <p>Your data is used exclusively to improve your experience, manage your account, and ensure the security of our platform. We do not sell your personal information to third parties.</p>
+            </div>
+          </section>
+        ) : activePage === 'contact' ? (
+          <section className="max-w-4xl mx-auto py-12">
+            <h2 className="text-4xl font-display font-bold mb-8 text-white">Contact Us</h2>
+            <div className="glass p-8 rounded-3xl border border-white/10 space-y-6 text-white/80 leading-relaxed">
+              <p>Ready to take your creativity to the next level? Our elite support team is here to assist you 24/7.</p>
+              <div className="mt-8 p-6 bg-white/5 rounded-2xl border border-white/10 inline-block">
+                <p className="text-sm text-white/50 mb-2 uppercase tracking-widest font-bold">Direct Comms Link</p>
+                <a href="mailto:vivekdalvi147@gmail.com" className="text-2xl font-bold text-neon-blue hover:text-white transition-colors break-all">
+                  vivekdalvi147@gmail.com
+                </a>
+              </div>
+            </div>
+          </section>
+        ) : null}
       </main>
 
       <footer className="border-t border-white/10 py-12 mt-32 bg-black/60 backdrop-blur-2xl relative overflow-hidden">
@@ -833,6 +904,11 @@ Style to emulate: `;
           <div className="flex items-center gap-3">
             <Sparkles className="text-neon-blue w-5 h-5" />
             <span className="font-display font-bold text-xl">BOL-<span className="text-neon-blue">AI</span></span>
+          </div>
+          <div className="flex flex-wrap justify-center gap-6 text-sm text-white/60">
+            <button onClick={() => { setActivePage('about'); window.scrollTo(0, 0); }} className="hover:text-neon-blue transition-colors">About Us</button>
+            <button onClick={() => { setActivePage('privacy'); window.scrollTo(0, 0); }} className="hover:text-neon-purple transition-colors">Privacy Policy</button>
+            <button onClick={() => { setActivePage('contact'); window.scrollTo(0, 0); }} className="hover:text-white transition-colors">Contact Us</button>
           </div>
           <div className="flex flex-col items-center md:items-end gap-1">
             <p className="text-white/40 text-sm">© 2026 Bol-AI. All rights reserved.</p>
@@ -951,12 +1027,20 @@ Style to emulate: `;
                     <span>Created by {sharedImage.userEmail?.split('@')[0] || 'Anonymous'}</span>
                   </div>
                 </div>
-                <button 
-                  onClick={() => handleDownload(sharedImage.imageUrl)}
-                  className="w-full py-3 bg-neon-blue text-black font-bold rounded-xl hover:bg-white transition-colors flex items-center justify-center gap-2"
-                >
-                  <Download className="w-5 h-5" /> Download Image
-                </button>
+                <div className="flex flex-col gap-3">
+                  <button 
+                    onClick={() => handleDownload(sharedImage.imageUrl)}
+                    className="w-full py-3 bg-neon-blue text-black font-bold rounded-xl hover:bg-white transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-5 h-5" /> Download Image
+                  </button>
+                  <button 
+                    onClick={() => { setSharedImage(null); setActivePage('home'); setActiveTab('generator'); }}
+                    className="w-full py-3 bg-white/10 text-white font-bold rounded-xl hover:bg-white/20 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Wand2 className="w-5 h-5" /> Make your own images
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
