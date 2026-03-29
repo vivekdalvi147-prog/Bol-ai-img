@@ -92,9 +92,9 @@ export default function App() {
         // Track user login in Firestore for Admin Panel
         setDoc(doc(db, 'users', currentUser.uid), {
           uid: currentUser.uid,
-          displayName: currentUser.displayName,
-          email: currentUser.email,
-          photoURL: currentUser.photoURL,
+          displayName: currentUser.displayName || currentUser.providerData?.[0]?.displayName || 'Guest',
+          email: currentUser.email || currentUser.providerData?.[0]?.email || 'N/A',
+          photoURL: currentUser.photoURL || currentUser.providerData?.[0]?.photoURL || '',
           lastLogin: serverTimestamp()
         }, { merge: true }).catch(console.error);
       }
@@ -191,19 +191,65 @@ export default function App() {
     }
   };
 
+  const addWatermark = async (imageUrl: string): Promise<string> => {
+    try {
+      const base64Data = await fetchAsBase64(imageUrl);
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error("Could not get canvas context"));
+            return;
+          }
+
+          // Draw original image
+          ctx.drawImage(img, 0, 0);
+
+          // Add Watermark
+          ctx.fillStyle = "rgba(255, 255, 255, 0.5)"; // Semi-transparent white
+          ctx.font = `bold ${Math.max(20, img.width * 0.03)}px 'Inter', sans-serif`;
+          ctx.textAlign = "right";
+          ctx.textBaseline = "bottom";
+          
+          // Add shadow for better visibility
+          ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
+          ctx.shadowBlur = 4;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+
+          const text = "Bol-AI Nexus";
+          const padding = Math.max(10, img.width * 0.02);
+          ctx.fillText(text, img.width - padding, img.height - padding);
+
+          resolve(canvas.toDataURL('image/png'));
+        };
+
+        img.onerror = () => {
+          reject(new Error("Failed to load image for watermarking"));
+        };
+
+        img.src = base64Data;
+      });
+    } catch (error) {
+      console.error("Watermark error:", error);
+      throw error;
+    }
+  };
+
   const handleDownload = async (url: string) => {
     try {
-      const response = await fetch(`/api/download?url=${encodeURIComponent(url)}`);
-      if (!response.ok) throw new Error("Failed to fetch image");
-      const blob = await response.blob();
-      const downloadUrl = URL.createObjectURL(blob);
+      const watermarkedBase64 = await addWatermark(url);
       const link = document.createElement('a');
-      link.href = downloadUrl;
+      link.href = watermarkedBase64;
       link.download = `bol-ai-${Date.now()}.png`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
-      URL.revokeObjectURL(downloadUrl);
     } catch (error) {
       console.error("Download error:", error);
       window.open(url, '_blank');
@@ -252,7 +298,7 @@ Style to emulate: `;
       // Track request in Firestore
       const reqRef = await addDoc(collection(db, 'requests'), {
         userId: user ? user.uid : 'anonymous',
-        userEmail: user ? user.email : 'anonymous',
+        userEmail: user ? (user.email || user.providerData?.[0]?.email || 'N/A') : 'anonymous',
         userIp: userIp,
         prompt: originalUserPrompt,
         enhancedPrompt: isEnhanceEnabled ? null : originalUserPrompt, // Will be updated if enhanced
@@ -378,7 +424,7 @@ Style to emulate: `;
             try {
               const newGen = {
                 userId: user ? user.uid : 'anonymous',
-                userEmail: user ? user.email : 'anonymous',
+                userEmail: user ? (user.email || user.providerData?.[0]?.email || 'N/A') : 'anonymous',
                 userIp: userIp,
                 prompt: finalPrompt,
                 imageUrl: finalDisplayUrl,

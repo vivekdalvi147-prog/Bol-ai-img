@@ -636,6 +636,12 @@
                                                 <a href="${data.imageUrl}" target="_blank" class="px-6 py-2 bg-neon-blue text-black font-bold text-[10px] uppercase tracking-widest rounded-full shadow-[0_0_20px_rgba(0,240,255,0.5)]">Open Original</a>
                                             </div>
                                         </div>
+                                        <div class="mt-3 flex items-center gap-2 max-w-xs">
+                                            <input type="text" readonly value="${data.imageUrl}" class="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-white/60 focus:outline-none focus:border-neon-blue transition-colors">
+                                            <button onclick="navigator.clipboard.writeText('${data.imageUrl}'); alert('Link copied!')" class="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/80 transition-colors" title="Copy Link">
+                                                <i data-lucide="copy" class="w-4 h-4"></i>
+                                            </button>
+                                        </div>
                                     ` : '<p class="text-xs text-white/20 italic">No output generated</p>'}
                                 </div>
                             </div>
