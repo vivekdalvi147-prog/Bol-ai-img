@@ -56,6 +56,8 @@ export default function App() {
       if (docSnap.exists()) {
         setMaintenanceMode(docSnap.data().maintenanceMode || 0);
       }
+    }, (error) => {
+      console.error("Error fetching settings:", error);
     });
     return () => unsub();
   }, []);
@@ -92,9 +94,9 @@ export default function App() {
         // Track user login in Firestore for Admin Panel
         setDoc(doc(db, 'users', currentUser.uid), {
           uid: currentUser.uid,
-          displayName: currentUser.displayName || currentUser.providerData?.[0]?.displayName || 'Guest',
-          email: currentUser.email || currentUser.providerData?.[0]?.email || 'N/A',
-          photoURL: currentUser.photoURL || currentUser.providerData?.[0]?.photoURL || '',
+          displayName: currentUser.displayName || currentUser.providerData?.find(p => p.displayName)?.displayName || 'Guest',
+          email: currentUser.email || currentUser.providerData?.find(p => p.email)?.email || 'N/A',
+          photoURL: currentUser.photoURL || currentUser.providerData?.find(p => p.photoURL)?.photoURL || '',
           lastLogin: serverTimestamp()
         }, { merge: true }).catch(console.error);
       }
@@ -211,19 +213,19 @@ export default function App() {
           ctx.drawImage(img, 0, 0);
 
           // Add Watermark
-          ctx.fillStyle = "rgba(255, 255, 255, 0.5)"; // Semi-transparent white
-          ctx.font = `bold ${Math.max(20, img.width * 0.03)}px 'Inter', sans-serif`;
+          ctx.fillStyle = "rgba(255, 255, 255, 0.8)"; // More visible white
+          ctx.font = `bold ${Math.max(30, img.width * 0.04)}px 'Inter', sans-serif`;
           ctx.textAlign = "right";
           ctx.textBaseline = "bottom";
           
           // Add shadow for better visibility
-          ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
-          ctx.shadowBlur = 4;
-          ctx.shadowOffsetX = 2;
-          ctx.shadowOffsetY = 2;
+          ctx.shadowColor = "rgba(0, 0, 0, 0.9)";
+          ctx.shadowBlur = 6;
+          ctx.shadowOffsetX = 3;
+          ctx.shadowOffsetY = 3;
 
           const text = "Bol-Ai";
-          const padding = Math.max(10, img.width * 0.02);
+          const padding = Math.max(20, img.width * 0.03);
           ctx.fillText(text, img.width - padding, img.height - padding);
 
           resolve(canvas.toDataURL('image/png'));
@@ -298,7 +300,7 @@ Style to emulate: `;
       // Track request in Firestore
       const reqRef = await addDoc(collection(db, 'requests'), {
         userId: user ? user.uid : 'anonymous',
-        userEmail: user ? (user.email || user.providerData?.[0]?.email || 'N/A') : 'anonymous',
+        userEmail: user ? (user.email || user.providerData?.find(p => p.email)?.email || 'N/A') : 'anonymous',
         userIp: userIp,
         prompt: originalUserPrompt,
         enhancedPrompt: isEnhanceEnabled ? null : originalUserPrompt, // Will be updated if enhanced
@@ -424,7 +426,7 @@ Style to emulate: `;
             try {
               const newGen = {
                 userId: user ? user.uid : 'anonymous',
-                userEmail: user ? (user.email || user.providerData?.[0]?.email || 'N/A') : 'anonymous',
+                userEmail: user ? (user.email || user.providerData?.find(p => p.email)?.email || 'N/A') : 'anonymous',
                 userIp: userIp,
                 prompt: finalPrompt,
                 imageUrl: finalDisplayUrl,

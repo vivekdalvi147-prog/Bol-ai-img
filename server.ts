@@ -73,8 +73,13 @@ app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
       return res.status(400).json({ error: "ImgBB API Key missing (IMG_VIVEKAPP_AI). Please add it in AI Studio Secrets." });
     }
 
+    let imagePayload = imageUrl;
+    if (imageUrl.startsWith('data:image')) {
+      imagePayload = imageUrl.split(',')[1];
+    }
+
     const params = new URLSearchParams();
-    params.append("image", imageUrl);
+    params.append("image", imagePayload);
 
     const response = await fetch(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
       method: 'POST',
@@ -134,7 +139,15 @@ app.get("/api/download", async (req, res) => {
       return res.status(400).send("URL is required");
     }
 
-    const response = await fetch(url);
+    let fetchUrl = url;
+    if (url.startsWith('/')) {
+      // It's a relative URL, construct absolute URL
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers.host;
+      fetchUrl = `${protocol}://${host}${url}`;
+    }
+
+    const response = await fetch(fetchUrl);
     if (!response.ok) {
       throw new Error(`Failed to fetch image: ${response.statusText}`);
     }
