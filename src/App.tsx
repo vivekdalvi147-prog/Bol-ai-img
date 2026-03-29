@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle, Zap, ShieldCheck, Mail, Settings2, ImagePlus } from 'lucide-react';
+import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle, Zap, ShieldCheck, Mail, ImagePlus } from 'lucide-react';
 import { auth, googleProvider, db } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
@@ -34,9 +34,6 @@ export default function App() {
   const [generatedSize, setGeneratedSize] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [negativePrompt, setNegativePrompt] = useState('');
-  const [seed, setSeed] = useState('');
-  const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
   useEffect(() => {
@@ -289,16 +286,27 @@ export default function App() {
   const UI_DESIGN_PROMPT_PREFIX = "Professional UI/UX design, high-quality user interface, modern web layout, clean digital components, sleek app design, 4k resolution, highly detailed, professional color palette, ";
 
   const handleGenerate = async () => {
-    if ((!prompt.trim() && !referenceImage) || isGenerating || isEnhancing) return;
+    if (isGenerating || isEnhancing) return;
     
-    if (maintenanceMode === 1) return;
+    setIsGenerating(true);
+    if (!prompt.trim() && !referenceImage) {
+      setIsGenerating(false);
+      return;
+    }
+    
+    if (maintenanceMode === 1) {
+      setIsGenerating(false);
+      return;
+    }
     if (maintenanceMode === 2) {
       setError("Bol-AI Server Error: Our servers are currently experiencing high load or undergoing maintenance. Please try again later. Thanks for understanding.");
+      setIsGenerating(false);
       return;
     }
 
     if (!user) {
       setIsLoginSliderOpen(true);
+      setIsGenerating(false);
       return;
     }
 
@@ -379,7 +387,6 @@ export default function App() {
         }
       }
 
-      setIsGenerating(true);
       // Step 2: Generate Image
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -388,9 +395,7 @@ export default function App() {
           prompt: finalPrompt, 
           size: selectedSize,
           quality: quality,
-          image_url: referenceImage,
-          negative_prompt: negativePrompt,
-          seed: seed
+          image_url: referenceImage
         }),
       });
 
@@ -817,123 +822,6 @@ export default function App() {
               </div>
             </div>
           </motion.div>
-
-          {/* Advanced Settings */}
-          <div className="mt-6 max-w-4xl mx-auto">
-            <button 
-              onClick={() => setIsAdvancedOpen(!isAdvancedOpen)}
-              className={`flex items-center gap-3 px-5 py-2.5 rounded-full border transition-all duration-300 text-[11px] uppercase tracking-[0.2em] font-bold ${
-                isAdvancedOpen 
-                  ? 'bg-neon-blue/10 border-neon-blue/30 text-neon-blue shadow-[0_0_20px_rgba(0,255,255,0.1)]' 
-                  : 'bg-white/5 border-white/10 text-white/30 hover:text-white hover:border-white/20'
-              }`}
-            >
-              <Settings2 className={`w-4 h-4 ${isAdvancedOpen ? 'animate-spin-slow' : ''}`} />
-              Advanced Engine Settings
-              <ChevronDown className={`w-4 h-4 transition-transform duration-500 ${isAdvancedOpen ? 'rotate-180' : ''}`} />
-            </button>
-            
-            <AnimatePresence>
-              {isAdvancedOpen && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0, y: -10 }}
-                  animate={{ height: 'auto', opacity: 1, y: 0 }}
-                  exit={{ height: 0, opacity: 0, y: -10 }}
-                  transition={{ duration: 0.4, ease: "circOut" }}
-                  className="overflow-hidden"
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4 p-8 glass rounded-[2rem] border border-white/10 shadow-2xl relative">
-                    <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-                      <Settings2 className="w-32 h-32" />
-                    </div>
-                    
-                    <div className="flex flex-col gap-3 relative z-10">
-                      <div className="flex items-center gap-2 ml-2">
-                        <label className="text-[10px] uppercase tracking-[0.3em] text-neon-blue font-bold">Negative Prompt</label>
-                        <div className="relative">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveTooltip(activeTooltip === 'negative' ? null : 'negative');
-                            }}
-                            className={`p-1.5 rounded-lg transition-all ${activeTooltip === 'negative' ? 'bg-neon-blue/20 text-neon-blue' : 'hover:bg-white/10 text-white/20'}`}
-                          >
-                            <Info className="w-4 h-4" />
-                          </button>
-                          <AnimatePresence>
-                            {activeTooltip === 'negative' && (
-                              <motion.div 
-                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                className="absolute bottom-full left-0 mb-3 w-64 p-4 bg-black/95 border border-white/10 rounded-2xl text-[11px] text-white/70 leading-relaxed z-50 backdrop-blur-2xl shadow-2xl"
-                              >
-                                <p className="font-bold text-neon-blue mb-2 uppercase tracking-widest text-[10px]">Negative Prompting</p>
-                                <p className="mb-2">Tell the AI what to <span className="text-red-400 font-bold">AVOID</span>. This is crucial for high-quality results.</p>
-                                <p className="text-white/40 italic">Example: "blurry, distorted, extra fingers, text, watermark, low resolution, grainy".</p>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-white/30 ml-2 -mt-1 mb-1">Specify what to <span className="text-red-400/50">exclude</span> from the image (e.g. blurry, text, low quality).</p>
-                      <textarea 
-                        value={negativePrompt}
-                        onChange={(e) => setNegativePrompt(e.target.value)}
-                        placeholder="e.g. blurry, low quality, distorted, watermark, text..."
-                        className="bg-black/60 p-5 rounded-2xl border border-white/5 text-sm text-white placeholder:text-white/10 outline-none focus:border-neon-blue/40 transition-all min-h-[120px] resize-none shadow-inner"
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-3 relative z-10">
-                      <div className="flex items-center gap-2 ml-2">
-                        <label className="text-[10px] uppercase tracking-[0.3em] text-neon-purple font-bold">Seed Control</label>
-                        <div className="relative">
-                          <button 
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveTooltip(activeTooltip === 'seed' ? null : 'seed');
-                            }}
-                            className={`p-1.5 rounded-lg transition-all ${activeTooltip === 'seed' ? 'bg-neon-purple/20 text-neon-purple' : 'hover:bg-white/10 text-white/20'}`}
-                          >
-                            <Info className="w-4 h-4" />
-                          </button>
-                          <AnimatePresence>
-                            {activeTooltip === 'seed' && (
-                              <motion.div 
-                                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                className="absolute bottom-full left-0 mb-3 w-64 p-4 bg-black/95 border border-white/10 rounded-2xl text-[11px] text-white/70 leading-relaxed z-50 backdrop-blur-2xl shadow-2xl"
-                              >
-                                <p className="font-bold text-neon-purple mb-2 uppercase tracking-widest text-[10px]">Seed Control</p>
-                                <p className="mb-2">A seed is a <span className="text-white font-medium">starting point</span> for the AI's randomness.</p>
-                                <p className="mb-2">Using the <span className="text-neon-purple font-bold">SAME SEED</span> with the same prompt will generate the exact same image.</p>
-                                <p className="text-white/40 italic">Useful for: Creating consistent characters or making small tweaks to a prompt.</p>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                      <p className="text-[10px] text-white/30 ml-2 -mt-1 mb-1">Use a fixed number to get <span className="text-neon-purple/50">consistent</span> results every time.</p>
-                      <input 
-                        type="number"
-                        value={seed}
-                        onChange={(e) => setSeed(e.target.value)}
-                        placeholder="Enter any number (e.g. 12345)"
-                        className="bg-black/60 p-5 rounded-2xl border border-white/5 text-sm text-white placeholder:text-white/10 outline-none focus:border-neon-purple/40 transition-all shadow-inner"
-                      />
-                      <div className="p-4 bg-white/5 rounded-2xl border border-white/5 mt-2">
-                        <p className="text-[10px] text-white/40 leading-relaxed italic">
-                          Pro Tip: Keep the seed empty for random results. If you find an image you love, copy its seed to make variations!
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
 
           {/* Maintenance Mode Warning */}
           <AnimatePresence>
