@@ -43,12 +43,49 @@
           "type": "string",
           "description": "The URL of the generated image."
         },
+        "durationMs": {
+          "type": "number",
+          "description": "The time taken to generate the image in milliseconds."
+        },
         "error": {
           "type": "string",
           "description": "The error message if the generation failed."
         }
       },
       "required": ["userId", "prompt", "status", "createdAt"]
+    },
+    "Generation": {
+      "title": "Generation",
+      "description": "A record of a successful image generation.",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "The UID of the user."
+        },
+        "prompt": {
+          "type": "string",
+          "description": "The prompt used for generation."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "The URL of the generated image."
+        },
+        "referenceImageUrl": {
+          "type": "string",
+          "description": "The URL of the reference image."
+        },
+        "size": {
+          "type": "string",
+          "description": "The size of the generated image."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp when the generation was saved."
+        }
+      },
+      "required": ["userId", "prompt", "imageUrl", "createdAt"]
     },
     "User": {
       "title": "User",
@@ -62,6 +99,19 @@
         "email": {
           "type": "string",
           "description": "The email of the user."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The display name of the user."
+        },
+        "photoURL": {
+          "type": "string",
+          "description": "The photo URL of the user."
+        },
+        "lastLogin": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The timestamp of the last login."
         },
         "role": {
           "type": "string",
@@ -104,6 +154,10 @@
     "/requests/{requestId}": {
       "schema": "Request",
       "description": "Collection of image generation requests."
+    },
+    "/generations/{docId}": {
+      "schema": "Generation",
+      "description": "Collection of successful image generations."
     },
     "/users/{userId}": {
       "schema": "User",

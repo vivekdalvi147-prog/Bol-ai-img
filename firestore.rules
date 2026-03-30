@@ -17,6 +17,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (request.auth.uid == '2cwK3E4SSvezZRop3VE14lbfJdc2' ||
+         request.auth.token.email == 'vivekdalvi147@gmail.com' ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -43,33 +44,60 @@ service cloud.firestore {
               request.resource.data[field].size() <= maxLen);
     }
 
+    function isValidNumber(field, minVal, maxVal) {
+      return !(field in request.resource.data) || 
+             request.resource.data[field] == null ||
+             (request.resource.data[field] is number && 
+              request.resource.data[field] >= minVal && 
+              request.resource.data[field] <= maxVal);
+    }
+
     // ===============================================================
     // Domain Validators
     // ===============================================================
 
+    function isRecent(ts) {
+      return ts is timestamp && 
+             ts > request.time - duration.value(5, 'm') && 
+             ts < request.time + duration.value(5, 'm');
+    }
+
     function isValidRequest(data) {
       return hasRequiredFields(['userId', 'prompt', 'status', 'createdAt']) &&
-             hasOnlyAllowedFields(['userId', 'userEmail', 'userIp', 'prompt', 'enhancedPrompt', 'referenceImageUrl', 'status', 'createdAt', 'imageUrl', 'error', 'completedAt']) &&
-             data.userId is string &&
+             hasOnlyAllowedFields(['userId', 'userEmail', 'userIp', 'prompt', 'enhancedPrompt', 'referenceImageUrl', 'status', 'createdAt', 'imageUrl', 'error', 'completedAt', 'durationMs']) &&
+             data.userId is string && data.userId.size() <= 128 &&
              isValidOptionalString('userEmail', 0, 255) &&
              isValidOptionalString('userIp', 0, 45) &&
              isValidString('prompt', 1, 5000) &&
              isValidOptionalString('enhancedPrompt', 0, 10000) &&
              isValidOptionalString('referenceImageUrl', 0, 2000) &&
              data.status in ['active', 'completed', 'error'] &&
-             data.createdAt is timestamp &&
+             isRecent(data.createdAt) &&
              isValidOptionalString('imageUrl', 0, 2000) &&
-             isValidOptionalString('error', 0, 1000);
+             isValidOptionalString('error', 0, 1000) &&
+             isValidNumber('durationMs', 0, 3600000);
+    }
+
+    function isValidGeneration(data) {
+      return hasRequiredFields(['userId', 'prompt', 'imageUrl', 'createdAt']) &&
+             hasOnlyAllowedFields(['userId', 'prompt', 'imageUrl', 'referenceImageUrl', 'size', 'createdAt']) &&
+             data.userId is string && data.userId.size() <= 128 &&
+             isValidString('prompt', 1, 10000) &&
+             isValidString('imageUrl', 1, 2000) &&
+             isValidOptionalString('referenceImageUrl', 0, 2000) &&
+             isValidOptionalString('size', 0, 50) &&
+             isRecent(data.createdAt);
     }
 
     function isValidUser(data) {
       return hasRequiredFields(['uid', 'email']) &&
              hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'lastLogin', 'role', 'createdAt']) &&
-             data.uid is string &&
-             data.email is string &&
+             data.uid is string && data.uid.size() <= 128 &&
+             data.email is string && data.email.size() <= 255 &&
              isValidOptionalString('displayName', 0, 100) &&
              isValidOptionalString('photoURL', 0, 500) &&
-             (data.role == null || data.role in ['admin', 'user']);
+             (!('role' in data) || data.role == null || data.role in ['admin', 'user']) &&
+             (!('lastLogin' in data) || isRecent(data.lastLogin));
     }
 
     // ===============================================================
@@ -117,9 +145,10 @@ service cloud.firestore {
     }
     
     match /generations/{docId} {
-      allow get: if true;
-      allow list: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.userId) || resource.data.userId == 'anonymous';
-      allow create: if (isAuthenticated() && request.auth.uid == request.resource.data.userId) || request.resource.data.userId == 'anonymous';
+      // Public gallery: anyone can read
+      allow read: if true;
+      allow create: if isValidGeneration(request.resource.data) && 
+                      ((isAuthenticated() && request.auth.uid == request.resource.data.userId) || request.resource.data.userId == 'anonymous');
       allow update, delete: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.userId) || resource.data.userId == 'anonymous';
     }
   }

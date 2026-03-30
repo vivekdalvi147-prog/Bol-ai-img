@@ -729,8 +729,7 @@ function AppContent() {
             try {
               const newGen = {
                 userId: user ? user.uid : 'anonymous',
-                userEmail: user ? (user.email || user.providerData?.find(p => p.email)?.email || 'N/A') : 'anonymous',
-                userIp: userIp,
+                // Removed userEmail and userIp for privacy in public gallery
                 prompt: finalPrompt,
                 imageUrl: finalDisplayUrl,
                 referenceImageUrl: finalReferenceImageUrl,
@@ -744,7 +743,7 @@ function AppContent() {
                 setMyImages(prev => [{ id: docRef.id, ...newGen }, ...prev]);
               }
             } catch (dbError) {
-              console.error("Failed to save to Firestore:", dbError);
+              handleFirestoreError(dbError, OperationType.CREATE, 'generations');
             }
 
             if (!user) {
