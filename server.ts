@@ -115,7 +115,8 @@ CORE DIRECTIVES:
 2. MODE AWARENESS:
    - IF THIS IS A NEW GENERATION: Structure the prompt with SUBJECT, ENVIRONMENT, STYLE, LIGHTING, and CAMERA. Use high-impact terms like 'hyper-realistic', '8k resolution', 'unreal engine 5 style'.
    - IF THIS IS AN IMAGE EDIT (IMG-TO-IMG): Focus on the CHANGES or ENHANCEMENTS to be made to the reference image. Describe the desired modifications in detail while maintaining the context of the original image.
-3. PURE OUTPUT: Return ONLY the upgraded prompt text. No chatter.
+3. LENGTH CONSTRAINT: Your output MUST be under 1500 characters.
+4. PURE OUTPUT: Return ONLY the upgraded prompt text. No chatter.
 
 USER INPUT:
 "${prompt}"
@@ -173,7 +174,13 @@ app.get("/api/download", async (req, res) => {
 app.post("/api/generate", rateLimiter, async (req, res) => {
   try {
     const { prompt, size, image_url } = req.body;
-    const userPrompt = prompt || "A golden cat";
+    let userPrompt = prompt || "A golden cat";
+    
+    // Strict truncation to avoid ModelScope 2000 character limit
+    if (userPrompt.length > 1800) {
+      userPrompt = userPrompt.substring(0, 1800);
+    }
+
     const imageSize = size || "1024*1024";
     const apiKey = process.env.VIVEK_AI_BOL_IMG;
 
@@ -193,27 +200,38 @@ app.post("/api/generate", rateLimiter, async (req, res) => {
     // 1. Image Generation Task
     const [width, height] = imageSize.split('*').map(Number);
     
+    // Standard ModelScope request structure
     const requestBody: any = {
       model: model,
       input: {
         prompt: userPrompt,
         image_url: image_url || undefined
-      },
-      parameters: {
-        n: 1,
-        size: `${width}*${height}`,
-        width: width,
-        height: height
       }
     };
 
-    if (image_url) {
+    // Add parameters if applicable
+    if (!image_url) {
+      requestBody.parameters = {
+        n: 1,
+        size: imageSize.replace('x', '*'), // Ensure 1024*1024 format
+        width: width,
+        height: height
+      };
+      // For text-to-image, some models prefer prompt at top level
+      requestBody.prompt = userPrompt;
+    } else {
+      // For image-to-image, some models prefer image_url at top level
       requestBody.image_url = image_url;
-      if (requestBody.parameters) {
-        requestBody.parameters.image_url = image_url;
-      }
+      requestBody.parameters = {
+        n: 1,
+        size: imageSize.replace('x', '*'),
+        width: width,
+        height: height,
+        image_url: image_url
+      };
     }
 
+    console.log("ModelScope Request Body:", JSON.stringify(requestBody));
     console.log(`Starting generation for model: ${model}, prompt: ${userPrompt.substring(0, 50)}...`);
 
     const response = await fetchWithRetry(`${baseUrl}v1/images/generations`, {
@@ -231,8 +249,15 @@ app.post("/api/generate", rateLimiter, async (req, res) => {
 
     const initialData = await response.json() as any;
     console.log("ModelScope Initial Response:", JSON.stringify(initialData));
-    const taskId = initialData.task_id || initialData.id; // Some models might use 'id' instead of 'task_id'
+    
+    // Check for direct result (synchronous)
+    const directUrl = initialData.output?.url || initialData.data?.[0]?.url || initialData.url;
+    if (directUrl) {
+      return res.json({ task_id: 'sync', url: directUrl });
+    }
 
+    const taskId = initialData.task_id || initialData.id; // Some models might use 'id' instead of 'task_id'
+    
     if (!taskId) {
       return res.status(500).json({ error: "Failed to get task_id from Bol-AI. Response: " + JSON.stringify(initialData) });
     }
@@ -272,6 +297,7 @@ app.get("/api/tasks/:taskId", async (req, res) => {
     }
 
     const data = await resultResponse.json() as any;
+    console.log(`Task ${taskId} Status:`, JSON.stringify(data));
     res.json(data);
   } catch (error: any) {
     console.error("Task Check Error:", error);

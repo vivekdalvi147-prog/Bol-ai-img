@@ -539,6 +539,28 @@ function AppContent() {
         throw new Error('No task ID returned from server.');
       }
 
+      // Handle synchronous result
+      if (taskId === 'sync' && data.url) {
+        console.log("Synchronous result received:", data.url);
+        const finalUrl = data.url;
+        setGeneratedImage(finalUrl);
+        setIsGenerating(false);
+        
+        // Update Firestore
+        if (currentRequestId) {
+          try {
+            await updateDoc(doc(db, 'requests', currentRequestId), {
+              status: 'completed',
+              imageUrl: finalUrl,
+              completedAt: serverTimestamp()
+            });
+          } catch (e) {
+            handleFirestoreError(e, OperationType.UPDATE, 'requests');
+          }
+        }
+        return;
+      }
+
       // Poll for status
       let isComplete = false;
       let attempts = 0;
@@ -559,10 +581,21 @@ function AppContent() {
           continue;
         }
         
-        if (statusData.task_status === "SUCCEED") {
-          if (statusData.output_images && statusData.output_images.length > 0) {
-            const finalImageUrl = statusData.output_images[0];
-            
+        const isSucceeded = statusData.task_status === "SUCCEED" || statusData.status === "SUCCEED" || statusData.task_status === "SUCCESS" || statusData.status === "SUCCESS";
+        const isFailed = statusData.task_status === "FAILED" || statusData.status === "FAILED" || statusData.task_status === "ERROR" || statusData.status === "ERROR";
+
+        if (isFailed) {
+          throw new Error(`Generation failed: ${statusData.message || statusData.error || 'Unknown error'}`);
+        }
+        
+        if (isSucceeded) {
+          // Extract image URL from various possible locations
+          const finalImageUrl = statusData.output_images?.[0] || 
+                               statusData.output?.url || 
+                               statusData.data?.[0]?.url || 
+                               statusData.url;
+
+          if (finalImageUrl) {
             const endTime = Date.now();
             const durationMs = endTime - startTime;
 
