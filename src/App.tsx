@@ -976,7 +976,7 @@ function AppContent() {
                   >
                     <div className="flex items-center gap-2 mb-3">
                       <div className="w-2 h-2 rounded-full bg-neon-purple animate-pulse" />
-                      <p className="font-bold text-neon-purple uppercase tracking-widest text-[10px]">Gemma 3 27B Intelligence</p>
+                      <p className="font-bold text-neon-purple uppercase tracking-widest text-[10px]">Gemma 3 27B IT</p>
                     </div>
                     <p className="mb-3 leading-relaxed">Bol-AI Enhance is a <span className="text-white font-medium">next-gen prompt engineering engine</span> that uses the Gemma 3 27B IT model to analyze your input and expand it into a professional-grade prompt.</p>
                     <ul className="space-y-2 text-[10px]">

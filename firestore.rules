@@ -36,6 +36,7 @@ service cloud.firestore {
 
     function isValidOptionalString(field, minLen, maxLen) {
       return !(field in request.resource.data) || 
+             request.resource.data[field] == null ||
              (request.resource.data[field] is string && 
               request.resource.data[field].size() >= minLen && 
               request.resource.data[field].size() <= maxLen);
@@ -49,6 +50,8 @@ service cloud.firestore {
       return hasRequiredFields(['userId', 'prompt', 'status', 'createdAt']) &&
              hasOnlyAllowedFields(['userId', 'userEmail', 'userIp', 'prompt', 'enhancedPrompt', 'referenceImageUrl', 'status', 'createdAt', 'imageUrl', 'error']) &&
              data.userId is string &&
+             isValidOptionalString('userEmail', 1, 255) &&
+             isValidOptionalString('userIp', 1, 45) &&
              isValidString('prompt', 1, 5000) &&
              isValidOptionalString('enhancedPrompt', 1, 10000) &&
              isValidOptionalString('referenceImageUrl', 1, 2000) &&
@@ -73,7 +76,7 @@ service cloud.firestore {
       // Anyone can create a request (even anonymous users, to track free generations)
       // But we validate the data strictly
       allow create: if isValidRequest(request.resource.data) && 
-                      (request.resource.data.userId == 'anonymous' || isOwner(request.resource.data.userId));
+                      (request.resource.data.userId == 'anonymous' || isAuthenticated());
       
       // Only admin or the creator can read/update their own request
       allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.userId) || resource.data.userId == 'anonymous';
