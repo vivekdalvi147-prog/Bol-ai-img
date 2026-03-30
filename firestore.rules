@@ -16,8 +16,9 @@ service cloud.firestore {
     
     function isAdmin() {
       return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-         request.auth.uid == '2cwK3E4SSvezZRop3VE14lbfJdc2'); // Updated with user's UID
+        (request.auth.uid == '2cwK3E4SSvezZRop3VE14lbfJdc2' ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
     function hasRequiredFields(fields) {
@@ -48,24 +49,27 @@ service cloud.firestore {
 
     function isValidRequest(data) {
       return hasRequiredFields(['userId', 'prompt', 'status', 'createdAt']) &&
-             hasOnlyAllowedFields(['userId', 'userEmail', 'userIp', 'prompt', 'enhancedPrompt', 'referenceImageUrl', 'status', 'createdAt', 'imageUrl', 'error']) &&
+             hasOnlyAllowedFields(['userId', 'userEmail', 'userIp', 'prompt', 'enhancedPrompt', 'referenceImageUrl', 'status', 'createdAt', 'imageUrl', 'error', 'completedAt']) &&
              data.userId is string &&
-             isValidOptionalString('userEmail', 1, 255) &&
-             isValidOptionalString('userIp', 1, 45) &&
+             isValidOptionalString('userEmail', 0, 255) &&
+             isValidOptionalString('userIp', 0, 45) &&
              isValidString('prompt', 1, 5000) &&
-             isValidOptionalString('enhancedPrompt', 1, 10000) &&
-             isValidOptionalString('referenceImageUrl', 1, 2000) &&
+             isValidOptionalString('enhancedPrompt', 0, 10000) &&
+             isValidOptionalString('referenceImageUrl', 0, 2000) &&
              data.status in ['active', 'completed', 'error'] &&
-             data.createdAt is timestamp;
+             data.createdAt is timestamp &&
+             isValidOptionalString('imageUrl', 0, 2000) &&
+             isValidOptionalString('error', 0, 1000);
     }
 
     function isValidUser(data) {
-      return hasRequiredFields(['uid', 'email', 'role', 'createdAt']) &&
-             hasOnlyAllowedFields(['uid', 'email', 'role', 'createdAt']) &&
+      return hasRequiredFields(['uid', 'email']) &&
+             hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'lastLogin', 'role', 'createdAt']) &&
              data.uid is string &&
              data.email is string &&
-             data.role in ['admin', 'user'] &&
-             data.createdAt is timestamp;
+             isValidOptionalString('displayName', 0, 100) &&
+             isValidOptionalString('photoURL', 0, 500) &&
+             (data.role == null || data.role in ['admin', 'user']);
     }
 
     // ===============================================================
@@ -93,9 +97,13 @@ service cloud.firestore {
       allow read: if isAdmin() || isOwner(userId);
       
       // Users can write their own profile, but only admin can change roles
-      allow create: if isValidUser(request.resource.data) && isOwner(userId) && request.resource.data.role == 'user';
+      allow create: if isValidUser(request.resource.data) && isOwner(userId) && 
+                      (!('role' in request.resource.data) || request.resource.data.role == 'user');
       allow update: if isValidUser(request.resource.data) && 
-                      (isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role));
+                      (isAdmin() || (isOwner(userId) && 
+                        (!('role' in request.resource.data) || 
+                         !('role' in resource.data) || 
+                         request.resource.data.role == resource.data.role)));
     }
     
     match /settings/{docId} {
