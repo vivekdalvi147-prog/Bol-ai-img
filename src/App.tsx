@@ -349,11 +349,14 @@ export default function App() {
         data = JSON.parse(text);
       } catch (e) {
         console.error("Raw response:", text);
-        throw new Error(`Server Error: ${text.substring(0, 50)}... Make sure the server is running.`);
+        if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
+          throw new Error(`Bol-AI Server Error: The server returned an error page. This usually means a timeout or a crash on Vercel. Please try again in a few seconds.`);
+        }
+        throw new Error(`Server Error: ${text.substring(0, 100)}...`);
       }
       
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to start image generation');
+        throw new Error(data.error || data.message || 'Failed to start image generation');
       }
 
       const taskId = data.task_id;
