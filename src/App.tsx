@@ -3,14 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import * as React from 'react';
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle, Zap, ShieldCheck, Mail, ImagePlus, Copy, Edit } from 'lucide-react';
-import { auth, googleProvider, db, handleFirestoreError, OperationType } from './lib/firebase';
+import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle, Zap, ShieldCheck, Mail, ImagePlus } from 'lucide-react';
+import { auth, googleProvider, db } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot, increment, getDocFromServer } from 'firebase/firestore';
-import { ImageEditor } from './components/ImageEditor';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 
 // Add your example image URLs here! You can use local paths or full URLs.
 const EXAMPLE_IMAGES = [
@@ -23,60 +21,7 @@ const EXAMPLE_IMAGES = [
   'https://i.ibb.co/4ZP81Tr7/v11.png'
 ];
 
-
-interface ErrorBoundaryProps {
-  children: React.ReactNode;
-}
-
-interface ErrorBoundaryState {
-  hasError: boolean;
-  error: Error | null;
-}
-
-class AppErrorBoundary extends React.Component<any, any> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    (this as any).state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: Error) {
-    return { hasError: true, error };
-  }
-
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("AppErrorBoundary caught an error", error, errorInfo);
-  }
-
-  render() {
-    if ((this as any).state.hasError) {
-      return (
-        <div className="min-h-screen bg-black flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-red-500/50 rounded-2xl p-8 max-w-md w-full text-center">
-            <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-            <h2 className="text-xl font-bold text-white mb-2">Something went wrong</h2>
-            <p className="text-zinc-400 mb-6">
-              {(this as any).state.error?.message.includes('{"error":') 
-                ? "A database error occurred. Please try again later."
-                : (this as any).state.error?.message || "An unexpected error occurred."}
-            </p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-6 py-2 bg-red-500 text-white rounded-xl font-medium hover:bg-red-600 transition-colors"
-            >
-              Reload Application
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    return (this as any).props.children;
-  }
-}
-
-// Admin Panel Component removed and moved to admin.html
-
-function AppContent() {
+export default function App() {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isEnhancing, setIsEnhancing] = useState(false);
@@ -88,7 +33,6 @@ function AppContent() {
   const [isEnhanceEnabled, setIsEnhanceEnabled] = useState(() => localStorage.getItem('bol_ai_enhance') === 'false' ? false : true);
   const [generatedSize, setGeneratedSize] = useState<string | null>(null);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
 
@@ -98,20 +42,6 @@ function AppContent() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
-  const [userIp, setUserIp] = useState<string>('unknown');
-
-  useEffect(() => {
-    const fetchIp = async () => {
-      try {
-        const res = await fetch('https://api.ipify.org?format=json');
-        const data = await res.json();
-        setUserIp(data.ip);
-      } catch (e) {
-        console.warn("Failed to fetch IP", e);
-      }
-    };
-    fetchIp();
-  }, []);
   const [isUiMode, setIsUiMode] = useState(() => localStorage.getItem('bol_ai_ui_mode') === 'true');
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [user, setUser] = useState<User | null>(null);
@@ -122,11 +52,7 @@ function AppContent() {
   const [myImages, setMyImages] = useState<any[]>([]);
   const [sharedImage, setSharedImage] = useState<any>(null);
   const [maintenanceMode, setMaintenanceMode] = useState(0); // 0: Off, 1: Full, 2: Soft
-  const [isEnhanceGlobal, setIsEnhanceGlobal] = useState(true);
-  const [isTxtToImgGlobal, setIsTxtToImgGlobal] = useState(true);
-  const [isImgToImgGlobal, setIsImgToImgGlobal] = useState(true);
-  const [userLimit, setUserLimit] = useState(10);
-  const isAdmin = user?.uid === '2cwK3E4SSvezZRop3VE14lbfJdc2'; // Updated with user's UID
+  const [userIp, setUserIp] = useState<string>('unknown');
   const [activePage, setActivePage] = useState<'home' | 'about' | 'privacy' | 'contact'>('home');
   const [exampleImages, setExampleImages] = useState<string[]>(EXAMPLE_IMAGES);
   const [generationsCount, setGenerationsCount] = useState(() => {
@@ -135,28 +61,12 @@ function AppContent() {
   });
 
   useEffect(() => {
-    const testConnection = async () => {
-      try {
-        await getDocFromServer(doc(db, 'test', 'connection'));
-      } catch (error: any) {
-        if (error.message?.includes('the client is offline')) {
-          console.error("Please check your Firebase configuration. The client is offline.");
-        }
-      }
-    };
-    testConnection();
-
     const unsub = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data();
-        setMaintenanceMode(data.maintenanceMode || 0);
-        setIsEnhanceGlobal(data.isEnhanceGlobal !== false);
-        setIsTxtToImgGlobal(data.isTxtToImgGlobal !== false);
-        setIsImgToImgGlobal(data.isImgToImgGlobal !== false);
-        setUserLimit(data.userLimit || 10);
+        setMaintenanceMode(docSnap.data().maintenanceMode || 0);
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.GET, 'settings/general');
+      console.error("Error fetching settings:", error);
     });
     return () => unsub();
   }, []);
@@ -186,12 +96,9 @@ function AppContent() {
       });
   }, []);
 
-  const [isAuthInitialized, setIsAuthInitialized] = useState(false);
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-      setIsAuthInitialized(true);
       if (currentUser) {
         // Track user login in Firestore for Admin Panel
         setDoc(doc(db, 'users', currentUser.uid), {
@@ -403,41 +310,7 @@ function AppContent() {
       return;
     }
 
-    // Check User Limits
-    if (!isAdmin) {
-      try {
-        const userDoc = await getDoc(doc(db, 'users', user.uid));
-        const userData = userDoc.data();
-        const today = new Date().toISOString().split('T')[0];
-        
-        let count = userData?.generationsCount || 0;
-        if (userData?.lastGenerationDate !== today) {
-          count = 0; // Reset for new day
-        }
-
-        if (count >= userLimit) {
-          setError(`Generation Limit Reached: You have used all your ${userLimit} daily generations. Please try again tomorrow or contact support for more.`);
-          setIsGenerating(false);
-          return;
-        }
-      } catch (e) {
-        console.error("Error checking user limit:", e);
-      }
-    }
-
-    // Check Global Feature Flags
-    if (!referenceImage && !isTxtToImgGlobal) {
-      setError("Text-to-Image generation is currently disabled by the administrator.");
-      setIsGenerating(false);
-      return;
-    }
-    if (referenceImage && !isImgToImgGlobal) {
-      setError("Image-to-Image generation is currently disabled by the administrator.");
-      setIsGenerating(false);
-      return;
-    }
-
-    console.log("Starting handleGenerate (Server-Side Flow)...");
+    console.log("Starting handleGenerate...");
     setIsEnhancing(false);
     setError(null);
     setGeneratedImage(null);
@@ -445,6 +318,8 @@ function AppContent() {
     setEnhancedPrompt(null);
     setIsPromptExpanded(false);
 
+    let finalPrompt = isUiMode ? `${UI_DESIGN_PROMPT_PREFIX}${prompt}` : prompt;
+    const originalUserPrompt = prompt;
     let currentRequestId: string | null = null;
     let finalReferenceImageUrl: string | null = null;
     const startTime = Date.now();
@@ -463,107 +338,209 @@ function AppContent() {
           const imgbbData = await imgbbRes.json();
           if (imgbbData.success) {
             finalReferenceImageUrl = imgbbData.data.url;
+            console.log("Reference image uploaded:", finalReferenceImageUrl);
           }
         } catch (e) {
           console.error("Reference Image ImgBB Upload Failed", e);
         }
       }
 
-      // Step 1: Create Request in Firestore
-      console.log("Creating request in Firestore...");
+      // Track request in Firestore
+      console.log("Tracking request in Firestore...");
       const reqRef = await addDoc(collection(db, 'requests'), {
         userId: user ? user.uid : 'anonymous',
         userEmail: user ? (user.email || user.providerData?.find(p => p.email)?.email || 'N/A') : 'anonymous',
         userIp: userIp,
-        prompt: prompt,
-        size: selectedSize,
-        isEnhanced: isEnhanceEnabled && isEnhanceGlobal,
-        enhancedPrompt: null, // Server will update this if isEnhanced is true
+        prompt: originalUserPrompt,
+        enhancedPrompt: isEnhanceEnabled ? null : originalUserPrompt, // Will be updated if enhanced
         referenceImageUrl: finalReferenceImageUrl,
         status: 'active',
         createdAt: serverTimestamp()
       });
       currentRequestId = reqRef.id;
+      console.log("Request tracked with ID:", currentRequestId);
 
-      // Step 2: Listen for completion
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => {
-          unsub();
-          reject(new Error("Generation Timeout (6m). The server is taking too long."));
-        }, 360000); // 6 minutes
+      if (isEnhanceEnabled) {
+        console.log("Enhancing prompt...");
+        setIsEnhancing(true);
+        try {
+          // Step 1: Enhance Prompt using Bol-AI Engine (via proxy)
+          const enhanceRes = await fetch('/api/enhance-prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: finalPrompt }),
+          });
 
-        const unsub = onSnapshot(doc(db, 'requests', currentRequestId!), (docSnap) => {
-          if (!docSnap.exists()) return;
-          const data = docSnap.data();
-          
-          if (data.enhancedPrompt && !enhancedPrompt) {
-            setEnhancedPrompt(data.enhancedPrompt);
-          }
-
-          if (data.status === 'completed') {
-            clearTimeout(timeout);
-            unsub();
-            setGeneratedImage(data.imageUrl);
-            setGeneratedSize(selectedSize);
-            setIsGenerating(false);
-            
-            // Update local state for "My Creations" if user is logged in
-            if (user) {
-              // The server already added the document to 'generations', 
-              // so we just need to refresh or wait for the snapshot listener on 'generations'
+          if (enhanceRes.ok) {
+            const enhanceData = await enhanceRes.json();
+            if (enhanceData.enhancedPrompt) {
+              finalPrompt = enhanceData.enhancedPrompt;
+              setEnhancedPrompt(finalPrompt);
+              console.log("Prompt enhanced:", finalPrompt);
+              // Update request with enhanced prompt
+              if (currentRequestId) {
+                await updateDoc(doc(db, 'requests', currentRequestId), {
+                  enhancedPrompt: finalPrompt
+                });
+              }
             }
-            resolve(true);
-          } else if (data.status === 'error') {
-            clearTimeout(timeout);
-            unsub();
-            reject(new Error(data.error || "Generation failed on server."));
+          } else {
+            console.warn("Prompt enhancement failed, using original prompt.");
           }
-        }, (error) => {
-          clearTimeout(timeout);
-          unsub();
-          console.error("Request Snapshot Error:", error);
-          reject(new Error("Database connection lost or permission denied. Please try again."));
-        });
+        } catch (err) {
+          console.warn("Prompt enhancement error:", err);
+        } finally {
+          setIsEnhancing(false);
+        }
+      }
+
+      // Step 2: Generate Image
+      console.log("Sending generation request to server...");
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          prompt: finalPrompt, 
+          size: selectedSize,
+          quality: quality,
+          image_url: finalReferenceImageUrl || referenceImage
+        }),
       });
+
+      const text = await response.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        console.error("Raw response:", text);
+        throw new Error(`Server Error: ${text.substring(0, 50)}... Make sure the server is running.`);
+      }
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to start image generation');
+      }
+
+      const taskId = data.task_id;
+      if (!taskId) {
+        throw new Error('No task ID returned from server.');
+      }
+
+      // Poll for status
+      let isComplete = false;
+      let attempts = 0;
+      const maxAttempts = 90; // 90 * 2s = 180 seconds (3 minutes)
+
+      while (!isComplete && attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        attempts++;
+
+        const statusRes = await fetch(`/api/tasks/${taskId}`);
+        if (!statusRes.ok) continue;
+
+        let statusData;
+        try {
+          statusData = await statusRes.json();
+        } catch (e) {
+          console.error("Failed to parse status response:", e);
+          continue;
+        }
+        
+        if (statusData.task_status === "SUCCEED") {
+          if (statusData.output_images && statusData.output_images.length > 0) {
+            const finalImageUrl = statusData.output_images[0];
+            
+            const endTime = Date.now();
+            const durationMs = endTime - startTime;
+
+            // Upload to ImgBB
+            let finalDisplayUrl = finalImageUrl;
+            try {
+              const base64DataWithPrefix = await fetchAsBase64(finalImageUrl);
+              const base64Data = base64DataWithPrefix.split(',')[1]; // Strip prefix
+
+              const imgbbRes = await fetch('/api/upload-imgbb', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ imageUrl: base64Data })
+              });
+              const imgbbData = await imgbbRes.json();
+              if (imgbbData.success) {
+                finalDisplayUrl = imgbbData.data.url;
+              }
+            } catch (e) {
+              console.error("ImgBB Upload Failed", e);
+            }
+
+            // Update UI with the FINAL URL
+            setGeneratedImage(finalDisplayUrl);
+            setGeneratedSize(selectedSize);
+            isComplete = true;
+
+            // Save to Firestore for ALL users (so admin can see it)
+            try {
+              const newGen = {
+                userId: user ? user.uid : 'anonymous',
+                userEmail: user ? (user.email || user.providerData?.find(p => p.email)?.email || 'N/A') : 'anonymous',
+                userIp: userIp,
+                prompt: finalPrompt,
+                imageUrl: finalDisplayUrl,
+                referenceImageUrl: finalReferenceImageUrl,
+                size: selectedSize,
+                createdAt: serverTimestamp()
+              };
+              const docRef = await addDoc(collection(db, 'generations'), newGen);
+              console.log("Image saved to Firestore successfully!");
+              setLastGeneratedId(docRef.id);
+              if (user) {
+                setMyImages(prev => [{ id: docRef.id, ...newGen }, ...prev]);
+              }
+            } catch (dbError) {
+              console.error("Failed to save to Firestore:", dbError);
+            }
+
+            if (!user) {
+              setGenerationsCount(prev => prev + 1);
+            }
+
+            // Update request status to completed
+            if (currentRequestId) {
+              await updateDoc(doc(db, 'requests', currentRequestId), {
+                status: 'completed',
+                imageUrl: finalDisplayUrl,
+                durationMs: durationMs
+              });
+            }
+          } else {
+            throw new Error("Bol-AI succeeded but returned no images.");
+          }
+        } else if (statusData.task_status === "FAILED") {
+          throw new Error("Bol-AI failed to generate image.");
+        }
+      }
+
+      if (!isComplete) {
+        throw new Error("Generation Timeout (3m). Please try again.");
+      }
 
     } catch (err: any) {
       console.error("Generation Error:", err);
       setError(err.message || "An unexpected error occurred.");
+      
+      // Update request status to error
+      if (currentRequestId) {
+        const endTime = Date.now();
+        const durationMs = endTime - startTime;
+        updateDoc(doc(db, 'requests', currentRequestId), {
+          status: 'error',
+          error: err.message || "Unknown error",
+          durationMs: durationMs
+        }).catch(console.error);
+      }
     } finally {
       setIsGenerating(false);
       setIsEnhancing(false);
     }
   };
-
-  const [isAppReady, setIsAppReady] = useState(false);
-
-  useEffect(() => {
-    if (isAuthInitialized) {
-      const timer = setTimeout(() => setIsAppReady(true), 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [isAuthInitialized]);
-
-  if ((!isAppReady || !isAuthInitialized) && activePage === 'home') {
-    return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
-        >
-          <div className="relative w-24 h-24 mb-8 mx-auto">
-            <div className="absolute inset-0 bg-neon-blue/20 blur-2xl rounded-full animate-pulse" />
-            <Loader2 className="w-24 h-24 text-neon-blue animate-spin relative z-10" />
-          </div>
-          <h1 className="text-4xl font-display font-bold tracking-tighter text-white mb-2">
-            BOL-<span className="text-neon-blue">AI</span>
-          </h1>
-          <p className="text-white/40 text-sm tracking-[0.2em] uppercase font-bold">Initializing Quantum Core</p>
-        </motion.div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen font-sans selection:bg-neon-blue/30">
@@ -699,9 +676,8 @@ function AppContent() {
               </div>
             </div>
 
-          {/* Enhance Toggle */}
-          {isEnhanceGlobal && (
-            <div className="flex justify-center relative">
+            {/* Enhance Toggle */}
+            <div className="flex justify-center">
               <button 
                 onClick={() => setIsEnhanceEnabled(!isEnhanceEnabled)} 
                 className={`flex items-center justify-between w-full px-6 py-3.5 rounded-[1.5rem] border transition-all duration-500 group ${
@@ -714,53 +690,15 @@ function AppContent() {
                   <div className={`p-2 rounded-xl transition-colors duration-300 ${isEnhanceEnabled ? 'bg-neon-purple/20' : 'bg-white/5'}`}>
                     <Wand2 className={`w-4 h-4 ${isEnhanceEnabled ? 'text-neon-purple animate-pulse' : 'text-white/40'}`} />
                   </div>
-                  <div className="flex flex-col items-start">
-                    <span className={`text-sm font-bold tracking-wider ${isEnhanceEnabled ? 'text-neon-purple' : 'text-white/40'}`}>
-                      Bol-AI Enhance
-                    </span>
-                  </div>
+                  <span className={`text-sm font-bold tracking-wider ${isEnhanceEnabled ? 'text-neon-purple' : 'text-white/40'}`}>
+                    Bol-AI Enhance
+                  </span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <div 
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveTooltip(activeTooltip === 'enhance' ? null : 'enhance');
-                    }}
-                    className="p-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/40 transition-colors cursor-pointer"
-                  >
-                    <Info className="w-4 h-4" />
-                  </div>
-                  <div className={`w-12 h-6 rounded-full p-1 transition-colors duration-500 relative ${isEnhanceEnabled ? 'bg-neon-purple' : 'bg-white/10'}`}>
-                    <div className={`w-4 h-4 rounded-full bg-white transition-all duration-500 shadow-[0_0_10px_rgba(255,255,255,0.5)] ${isEnhanceEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
-                  </div>
+                <div className={`w-12 h-6 rounded-full p-1 transition-colors duration-500 relative ${isEnhanceEnabled ? 'bg-neon-purple' : 'bg-white/10'}`}>
+                  <div className={`w-4 h-4 rounded-full bg-white transition-all duration-500 shadow-[0_0_10px_rgba(255,255,255,0.5)] ${isEnhanceEnabled ? 'translate-x-6' : 'translate-x-0'}`} />
                 </div>
               </button>
-              
-              <AnimatePresence>
-                {activeTooltip === 'enhance' && (
-                  <motion.div 
-                    initial={{ opacity: 0, scale: 0.9, y: 10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.9, y: 10 }}
-                    className="absolute bottom-full mb-4 w-72 p-5 glass border border-white/10 rounded-3xl text-xs text-white/70 z-50 shadow-2xl backdrop-blur-3xl"
-                  >
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="w-2 h-2 rounded-full bg-neon-purple animate-pulse" />
-                      <p className="font-bold text-neon-purple uppercase tracking-widest text-[10px]">Bol-AI Engine</p>
-                    </div>
-                    <p className="mb-3 leading-relaxed">Bol-AI Enhance is a <span className="text-white font-medium">next-gen prompt engineering engine</span> that uses the Bol-AI model to analyze your input and expand it into a professional-grade prompt.</p>
-                    <ul className="space-y-2 text-[10px]">
-                      <li className="flex items-center gap-2"><Sparkles className="w-3 h-3 text-neon-blue" /> Adds cinematic lighting & 8K details</li>
-                      <li className="flex items-center gap-2"><Sparkles className="w-3 h-3 text-neon-blue" /> Optimizes composition & camera angles</li>
-                      <li className="flex items-center gap-2"><Sparkles className="w-3 h-3 text-neon-blue" /> Translates & expands multi-language input</li>
-                    </ul>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
-          )}
           </div>
 
           <motion.div 
@@ -827,15 +765,13 @@ function AppContent() {
                       }
                     }}
                   />
-                  {isImgToImgGlobal && (
-                    <label 
-                      htmlFor="ref-image"
-                      className={`p-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${referenceImage ? 'bg-neon-blue text-black' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
-                    >
-                      <ImagePlus className="w-4 h-4" />
-                      <span className="hidden md:inline">REF IMG</span>
-                    </label>
-                  )}
+                  <label 
+                    htmlFor="ref-image"
+                    className={`p-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${referenceImage ? 'bg-neon-blue text-black' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}
+                  >
+                    <ImagePlus className="w-4 h-4" />
+                    <span className="hidden md:inline">REF IMG</span>
+                  </label>
                   <div className="flex items-center gap-2">
                     <button 
                       onClick={() => setIsUiMode(!isUiMode)}
@@ -878,24 +814,19 @@ function AppContent() {
                 </div>
                 <button 
                   onClick={handleGenerate}
-                  disabled={(!prompt.trim() && !referenceImage) || isGenerating || isEnhancing || maintenanceMode === 1 || (!isTxtToImgGlobal && !referenceImage) || (!isImgToImgGlobal && !!referenceImage)}
-                  className={`bg-gradient-to-r from-neon-blue to-neon-purple px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden ${
-                    (!isTxtToImgGlobal && !referenceImage) || (!isImgToImgGlobal && !!referenceImage) ? 'grayscale' : ''
-                  }`}
+                  disabled={(!prompt.trim() && !referenceImage) || isGenerating || isEnhancing || maintenanceMode === 1}
+                  className="bg-gradient-to-r from-neon-blue to-neon-purple px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed group relative overflow-hidden"
                 >
                   <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
                   {isGenerating ? (
                     <Loader2 className="w-5 h-5 animate-spin" />
                   ) : (
                     <>
-                      {(!isTxtToImgGlobal && !referenceImage) || (!isImgToImgGlobal && !!referenceImage) ? 'Disabled' : 'Generate'}
+                      Generate
                       <Send className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                     </>
                   )}
                 </button>
-                {((!isTxtToImgGlobal && !referenceImage) || (!isImgToImgGlobal && !!referenceImage)) && (
-                  <p className="absolute -bottom-6 left-0 right-0 text-center text-[10px] text-red-500 font-bold uppercase tracking-widest">Mode Disabled by Admin</p>
-                )}
               </div>
             </div>
           </motion.div>
@@ -997,17 +928,10 @@ function AppContent() {
                   ) : error ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 p-8 text-center">
                       <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center">
-                        <AlertTriangle className="text-red-500 w-8 h-8" />
+                        <Info className="text-red-500 w-8 h-8" />
                       </div>
-                      <p className="text-red-400 font-medium max-w-xs">
-                        {error.includes('{"error":') 
-                          ? "A database error occurred. Please try again." 
-                          : error}
-                      </p>
-                      <div className="flex gap-3">
-                        <button onClick={handleGenerate} className="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-xl text-sm text-white transition-all">Try Again</button>
-                        <button onClick={() => setError(null)} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-xl text-sm text-white/60 transition-all">Dismiss</button>
-                      </div>
+                      <p className="text-red-400 font-medium">{error}</p>
+                      <button onClick={handleGenerate} className="text-sm text-white/40 hover:text-white underline">Try Again</button>
                     </div>
                   ) : (
                     <>
@@ -1036,13 +960,6 @@ function AppContent() {
                           <p className="text-sm text-white/90 line-clamp-3 italic font-medium">"{enhancedPrompt || prompt}"</p>
                         </div>
                         <div className="flex flex-col sm:flex-row gap-3">
-                          <button 
-                            onClick={() => setIsEditorOpen(true)}
-                            className="w-full sm:w-auto px-6 py-3 bg-neon-purple/20 text-neon-purple font-bold rounded-2xl hover:bg-neon-purple hover:text-white transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 border border-neon-purple/30 active:scale-95 shrink-0"
-                          >
-                            <Edit className="w-5 h-5" />
-                            Edit
-                          </button>
                           <button 
                             onClick={() => handleDownload(generatedImage!)}
                             className="w-full sm:w-auto px-8 py-3 bg-neon-blue text-black font-bold rounded-2xl hover:bg-white hover:text-black transition-all duration-300 cursor-pointer flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(0,255,255,0.5)] hover:shadow-[0_0_30px_rgba(255,255,255,0.8)] active:scale-95 shrink-0"
@@ -1078,7 +995,7 @@ function AppContent() {
             <h3 className="text-3xl font-display font-bold">Gallery</h3>
           </div>
           
-          <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6" role="list" aria-label="Example image gallery">
+          <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6">
             {exampleImages.map((img, idx) => (
               <motion.div
                 key={idx}
@@ -1087,11 +1004,10 @@ function AppContent() {
                 viewport={{ once: true, margin: "-50px" }}
                 transition={{ duration: 0.6, delay: (idx % 4) * 0.1, ease: "easeOut" }}
                 className="relative group break-inside-avoid rounded-3xl overflow-hidden glass border border-white/10 shadow-lg"
-                role="listitem"
               >
                 <img 
                   src={img.startsWith('http') ? img : `/examples/${img}`} 
-                  alt={`Example masterpiece ${idx + 1}`}
+                  alt={`Gallery ${idx + 1}`}
                   className="w-full h-auto object-contain transition-transform duration-700 group-hover:scale-105"
                   onError={(e) => {
                     (e.target as HTMLImageElement).src = `https://picsum.photos/seed/ai${idx}/800/800`;
@@ -1104,10 +1020,9 @@ function AppContent() {
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-end p-4">
                   <button 
                     onClick={() => handleDownload(img.startsWith('http') ? img : `/examples/${img}`)}
-                    className="p-3 bg-neon-blue text-black rounded-xl hover:bg-white transition-colors active:scale-95 shadow-[0_0_15px_rgba(0,255,255,0.4)] focus:outline-none focus:ring-2 focus:ring-neon-blue"
-                    aria-label="Download this example image"
+                    className="p-3 bg-neon-blue text-black rounded-xl hover:bg-white transition-colors active:scale-95 shadow-[0_0_15px_rgba(0,255,255,0.4)]"
                   >
-                    <Download className="w-5 h-5" aria-hidden="true" />
+                    <Download className="w-5 h-5" />
                   </button>
                 </div>
               </motion.div>
@@ -1126,12 +1041,12 @@ function AppContent() {
             
             {myImages.length === 0 ? (
               <div className="text-center py-20 bg-white/5 rounded-3xl border border-white/10">
-                <ImageIcon className="w-16 h-16 text-white/20 mx-auto mb-4" aria-hidden="true" />
+                <ImageIcon className="w-16 h-16 text-white/20 mx-auto mb-4" />
                 <p className="text-white/50 text-lg">You haven't generated any images yet.</p>
-                <button onClick={() => setActiveTab('generator')} className="mt-6 px-6 py-2 bg-neon-blue/20 text-neon-blue rounded-xl hover:bg-neon-blue/30 transition-colors focus:outline-none focus:ring-2 focus:ring-neon-blue">Go to Generator</button>
+                <button onClick={() => setActiveTab('generator')} className="mt-6 px-6 py-2 bg-neon-blue/20 text-neon-blue rounded-xl hover:bg-neon-blue/30 transition-colors">Go to Generator</button>
               </div>
             ) : (
-              <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6" role="list" aria-label="My generated images">
+              <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 gap-6 space-y-6">
                 {myImages.map((img, idx) => (
                   <motion.div
                     key={img.id}
@@ -1139,11 +1054,10 @@ function AppContent() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: (idx % 4) * 0.1 }}
                     className="relative group break-inside-avoid rounded-3xl overflow-hidden glass border border-white/10 shadow-lg"
-                    role="listitem"
                   >
                     <img 
                       src={img.imageUrl} 
-                      alt={`Generated image for prompt: ${img.prompt}`}
+                      alt={img.prompt}
                       className="w-full h-auto object-contain transition-transform duration-700 group-hover:scale-105"
                       onContextMenu={(e) => e.preventDefault()}
                       referrerPolicy="no-referrer"
@@ -1151,29 +1065,20 @@ function AppContent() {
                     {/* Controls Overlay */}
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-between p-4">
                       <div className="flex justify-end gap-2">
-                        <button 
-                          onClick={() => handleShare(img.id)} 
-                          className="p-2 bg-white/10 hover:bg-white/20 rounded-xl backdrop-blur-md transition-colors focus:outline-none focus:ring-2 focus:ring-white" 
-                          aria-label="Share this image"
-                        >
-                          <Share2 className="w-4 h-4 text-white" aria-hidden="true" />
+                        <button onClick={() => handleShare(img.id)} className="p-2 bg-white/10 hover:bg-white/20 rounded-xl backdrop-blur-md transition-colors" title="Share">
+                          <Share2 className="w-4 h-4 text-white" />
                         </button>
-                        <button 
-                          onClick={() => handleDelete(img.id)} 
-                          className="p-2 bg-red-500/20 hover:bg-red-500/40 rounded-xl backdrop-blur-md transition-colors focus:outline-none focus:ring-2 focus:ring-red-500" 
-                          aria-label="Delete this image"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" aria-hidden="true" />
+                        <button onClick={() => handleDelete(img.id)} className="p-2 bg-red-500/20 hover:bg-red-500/40 rounded-xl backdrop-blur-md transition-colors" title="Delete">
+                          <Trash2 className="w-4 h-4 text-red-500" />
                         </button>
                       </div>
                       <div>
                         <p className="text-xs text-white/70 line-clamp-2 mb-3">{img.prompt}</p>
                         <button 
                           onClick={() => handleDownload(img.imageUrl)}
-                          className="w-full py-2 bg-neon-blue text-black font-bold rounded-xl hover:bg-white transition-colors flex items-center justify-center gap-2 text-sm focus:outline-none focus:ring-2 focus:ring-neon-blue"
-                          aria-label="Download this image"
+                          className="w-full py-2 bg-neon-blue text-black font-bold rounded-xl hover:bg-white transition-colors flex items-center justify-center gap-2 text-sm"
                         >
-                          <Download className="w-4 h-4" aria-hidden="true" /> Download
+                          <Download className="w-4 h-4" /> Download
                         </button>
                       </div>
                     </div>
@@ -1182,24 +1087,15 @@ function AppContent() {
                       <div className="flex gap-2">
                         <button 
                           onClick={() => handleDownload(img.imageUrl)}
-                          className="flex-1 py-2 bg-neon-blue text-black font-bold rounded-lg flex items-center justify-center gap-2 text-[10px] focus:outline-none focus:ring-2 focus:ring-neon-blue"
-                          aria-label="Download this image"
+                          className="flex-1 py-2 bg-neon-blue text-black font-bold rounded-lg flex items-center justify-center gap-2 text-[10px]"
                         >
-                          <Download className="w-3 h-3" aria-hidden="true" /> Download
+                          <Download className="w-3 h-3" /> Download
                         </button>
-                        <button 
-                          onClick={() => handleShare(img.id)} 
-                          className="p-2 bg-white/10 rounded-lg border border-white/10 focus:outline-none focus:ring-2 focus:ring-white"
-                          aria-label="Share this image"
-                        >
-                          <Share2 className="w-3.5 h-3.5 text-white" aria-hidden="true" />
+                        <button onClick={() => handleShare(img.id)} className="p-2 bg-white/10 rounded-lg border border-white/10">
+                          <Share2 className="w-3.5 h-3.5 text-white" />
                         </button>
-                        <button 
-                          onClick={() => handleDelete(img.id)} 
-                          className="p-2 bg-red-500/20 rounded-lg border border-red-500/20 focus:outline-none focus:ring-2 focus:ring-red-500"
-                          aria-label="Delete this image"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-500" aria-hidden="true" />
+                        <button onClick={() => handleDelete(img.id)} className="p-2 bg-red-500/20 rounded-lg border border-red-500/20">
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
                         </button>
                       </div>
                     </div>
@@ -1264,16 +1160,6 @@ function AppContent() {
         </div>
       </footer>
 
-      {/* Image Editor Modal */}
-      <AnimatePresence>
-        {isEditorOpen && generatedImage && (
-          <ImageEditor 
-            imageUrl={generatedImage} 
-            onClose={() => setIsEditorOpen(false)} 
-          />
-        )}
-      </AnimatePresence>
-
       {/* Sidebar Menu */}
       <AnimatePresence>
         {isMenuOpen && (
@@ -1314,9 +1200,6 @@ function AppContent() {
                   <button onClick={() => { setActiveTab('gallery'); setIsMenuOpen(false); }} className="text-left hover:text-neon-blue transition-colors py-2">Gallery</button>
                   {user && (
                     <button onClick={() => { setActiveTab('my-creations'); setIsMenuOpen(false); }} className="text-left hover:text-neon-blue transition-colors py-2">My Creations</button>
-                  )}
-                  {isAdmin && (
-                    <a href="/admin.html" className="text-left text-neon-purple hover:text-white transition-colors py-2 font-bold">Admin Panel</a>
                   )}
                 </nav>
 
@@ -1509,19 +1392,7 @@ function AppContent() {
                         )}
                       </div>
                       <h3 className="text-2xl font-bold text-white">{user.displayName}</h3>
-                      <p className="text-white/40 text-sm font-mono mb-2">{user.email}</p>
-                      <div className="bg-white/5 p-2 rounded-lg border border-white/10 flex items-center gap-2">
-                        <p className="text-[10px] text-white/30 font-mono select-all">UID: {user.uid}</p>
-                        <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(user.uid);
-                            setShowToast("UID copied to clipboard!");
-                          }}
-                          className="text-neon-blue hover:text-white transition-colors"
-                        >
-                          <Copy className="w-3 h-3" />
-                        </button>
-                      </div>
+                      <p className="text-white/40 text-sm font-mono">{user.email}</p>
                     </div>
                     <button 
                       onClick={async () => {
@@ -1595,13 +1466,5 @@ function AppContent() {
         )}
       </AnimatePresence>
     </div>
-  );
-}
-
-export default function App() {
-  return (
-    <AppErrorBoundary>
-      <AppContent />
-    </AppErrorBoundary>
   );
 }

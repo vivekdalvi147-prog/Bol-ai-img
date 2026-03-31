@@ -202,7 +202,6 @@
                 </div>
 
                 <!-- Image Config Tab -->
-                <!-- Engine Tab -->
                 <div id="tab-config" class="tab-content hidden space-y-8">
                     <div class="glass p-8 rounded-2xl max-w-2xl border border-white/10 space-y-8 card-3d">
                         <div class="space-y-4">
@@ -222,14 +221,6 @@
                         </div>
 
                         <button id="save-config-btn" class="w-full bg-[#00f0ff] text-black font-black py-5 rounded-xl hover:bg-white transition-all uppercase tracking-[0.2em] text-sm shadow-[0_0_30px_rgba(0,240,255,0.4)] active:scale-[0.98]">Update Engine Config</button>
-                    </div>
-                    
-                    <div class="glass p-8 rounded-2xl max-w-2xl border border-white/10 space-y-8 card-3d mt-6">
-                        <div class="space-y-4">
-                            <h3 class="font-bold text-lg text-[#ff003c] flex items-center gap-2"><i data-lucide="trash-2" class="w-5 h-5"></i> Maintenance</h3>
-                            <p class="text-sm text-white/50 mt-1 font-mono">Clean up stuck requests that have been processing for more than 6 minutes.</p>
-                            <button id="cleanup-requests-btn" class="w-full bg-[#ff003c]/10 text-[#ff003c] border border-[#ff003c] font-bold py-3 rounded-xl transition-all hover:bg-[#ff003c] hover:text-white uppercase tracking-wider text-sm">Cleanup Stuck Requests</button>
-                        </div>
                     </div>
                 </div>
 
@@ -519,10 +510,10 @@
 
         // Load Data
         async function loadData() {
-            // Cleanup stuck requests (older than 6 minutes)
+            // Cleanup stuck requests (older than 3 minutes)
             const cleanupStuckRequests = async () => {
                 const now = new Date();
-                const sixMinsAgo = new Date(now.getTime() - 6 * 60 * 1000);
+                const threeMinsAgo = new Date(now.getTime() - 3 * 60 * 1000);
                 
                 const stuckQuery = query(
                     collection(db, 'requests'), 
@@ -533,12 +524,12 @@
                 const snapshot = await getDocs(stuckQuery);
                 snapshot.forEach(async (docSnap) => {
                     const data = docSnap.data();
-                    if (data.status === 'active' && data.createdAt && data.createdAt.toDate() < sixMinsAgo) {
+                    if (data.status === 'active' && data.createdAt && data.createdAt.toDate() < threeMinsAgo) {
                         console.log(`Cleaning up stuck request: ${docSnap.id}`);
                         await setDoc(doc(db, 'requests', docSnap.id), {
                             status: 'error',
-                            error: 'Request Timeout (6m)',
-                            durationMs: 360000
+                            error: 'Request Timeout (3m)',
+                            durationMs: 180000
                         }, { merge: true });
                     }
                 });
@@ -759,49 +750,6 @@
                 alert('Engine configuration updated successfully!');
             } catch (err) {
                 alert('Update failed: ' + err.message);
-            } finally {
-                btn.textContent = originalText;
-                btn.disabled = false;
-            }
-        });
-
-        // Cleanup Stuck Requests
-        document.getElementById('cleanup-requests-btn').addEventListener('click', async () => {
-            if (!confirm('Are you sure you want to clean up stuck requests? This will mark any request processing for more than 6 minutes as failed.')) return;
-            
-            const btn = document.getElementById('cleanup-requests-btn');
-            const originalText = btn.textContent;
-            
-            try {
-                btn.textContent = 'Cleaning up...';
-                btn.disabled = true;
-                
-                const q = query(collection(db, 'requests'));
-                const snapshot = await getDocs(q);
-                let cleanedCount = 0;
-                
-                const now = Date.now();
-                const timeoutMs = 360000; // 6 minutes
-                
-                const batch = [];
-                snapshot.forEach(docSnap => {
-                    const data = docSnap.data();
-                    if (data.status === 'processing' || data.status === 'pending') {
-                        const createdAt = data.createdAt?.toMillis() || 0;
-                        if (now - createdAt > timeoutMs) {
-                            batch.push(setDoc(doc(db, 'requests', docSnap.id), {
-                                status: 'error',
-                                error: 'Timeout: Request was stuck in processing for too long.'
-                            }, { merge: true }));
-                            cleanedCount++;
-                        }
-                    }
-                });
-                
-                await Promise.all(batch);
-                alert(`Cleanup complete. Fixed ${cleanedCount} stuck requests.`);
-            } catch (err) {
-                alert('Cleanup failed: ' + err.message);
             } finally {
                 btn.textContent = originalText;
                 btn.disabled = false;
