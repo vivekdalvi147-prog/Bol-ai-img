@@ -144,14 +144,13 @@ async function processRequest(requestId: string, requestData: any) {
     if (refImageUrl) {
       requestBody = {
         model: "MusePublic/Qwen-Image-Edit",
-        input: { prompt: finalPrompt.substring(0, 500), image_url: refImageUrl },
-        parameters: { n: 1, size: size.replace('x', '*'), width, height }
+        prompt: finalPrompt.substring(0, 500),
+        image_url: refImageUrl
       };
     } else {
       requestBody = {
         model: model,
-        input: { prompt: finalPrompt.substring(0, 1800) },
-        parameters: { n: 1, size: size.replace('x', '*'), width, height }
+        prompt: finalPrompt.substring(0, 1800)
       };
     }
 
@@ -193,7 +192,11 @@ async function processRequest(requestId: string, requestData: any) {
 
       const statusRes = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
         method: 'GET',
-        headers: { "Authorization": `Bearer ${apiKey}`, "X-ModelScope-Task-Type": "image_generation" }
+        headers: { 
+          "Authorization": `Bearer ${apiKey}`, 
+          "Content-Type": "application/json",
+          "X-ModelScope-Task-Type": "image_generation" 
+        }
       });
 
       if (!statusRes.ok) continue;
@@ -209,6 +212,8 @@ async function processRequest(requestId: string, requestData: any) {
         if (finalUrl) {
           await finalizeRequest(requestId, requestData, finalUrl, startTime);
           isComplete = true;
+        } else {
+          throw new Error(`Task succeeded but no image URL found in response: ${JSON.stringify(statusData)}`);
         }
       }
     }

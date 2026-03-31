@@ -1,12 +1,896 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=1280" />
-    <title>Bol-AI | Admin Panel</title>
-  </head>
-  <body style="background-color: #050505;">
-    <div id="root"></div>
-    <script type="module" src="/src/admin.tsx"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1280">
+    <title>Bol-AI Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #050505; 
+            color: #ffffff; 
+            background-image: radial-gradient(circle at 50% 0%, #1a0b2e 0%, transparent 50%), radial-gradient(circle at 100% 100%, #001a33 0%, transparent 50%);
+            background-attachment: fixed;
+            min-width: 1200px;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        .glass { 
+            background: rgba(5, 5, 5, 0.8); 
+            backdrop-filter: blur(24px); 
+            border: 1px solid rgba(0, 240, 255, 0.1); 
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8); 
+        }
+        .tab-active { 
+            border-bottom: 3px solid #00f0ff; 
+            color: #00f0ff; 
+            background: linear-gradient(to top, rgba(0, 240, 255, 0.1), transparent);
+            transform: translateZ(10px);
+        }
+        .glass { 
+            background: rgba(5, 5, 5, 0.8); 
+            backdrop-filter: blur(24px); 
+            border: 1px solid rgba(0, 240, 255, 0.1); 
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8); 
+            transform-style: preserve-3d;
+            perspective: 1000px;
+        }
+        .card-3d {
+            transition: transform 0.3s ease;
+        }
+        .card-3d:hover {
+            transform: translateY(-10px) rotateX(5deg) rotateY(5deg);
+        }
+        .neon-text-blue { color: #00f0ff; text-shadow: 0 0 10px rgba(0, 240, 255, 0.5), 0 0 20px rgba(0, 240, 255, 0.2); }
+        .neon-text-purple { color: #b026ff; text-shadow: 0 0 10px rgba(176, 38, 255, 0.5), 0 0 20px rgba(176, 38, 255, 0.2); }
+        
+        .tab-active {
+            border-bottom: 3px solid #00f0ff;
+            background: linear-gradient(to top, rgba(0, 240, 255, 0.1), transparent);
+        }
+        .neon-border-blue { border: 1px solid rgba(0, 240, 255, 0.3); box-shadow: 0 0 15px rgba(0, 240, 255, 0.1); }
+        .neon-border-purple { border: 1px solid rgba(176, 38, 255, 0.3); box-shadow: 0 0 15px rgba(176, 38, 255, 0.1); }
+        
+        .traffic-row { cursor: pointer; transition: all 0.2s; }
+        .traffic-row:hover { background: rgba(0, 240, 255, 0.05); }
+        .detail-row { display: none; background: rgba(0, 0, 0, 0.4); }
+        .detail-row.active { display: table-row; }
+        .action-btn:hover { 
+            background: #ff003c; 
+            color: white; 
+            box-shadow: 0 0 20px rgba(255, 0, 60, 0.6); 
+        }
+
+        .refresh-btn {
+            background: rgba(0, 240, 255, 0.1);
+            border: 1px solid #00f0ff;
+            color: #00f0ff;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.2);
+            transition: all 0.3s ease;
+        }
+        .refresh-btn:hover {
+            background: #00f0ff;
+            color: black;
+            box-shadow: 0 0 20px rgba(0, 240, 255, 0.6);
+        }
+        .refresh-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+        ::-webkit-scrollbar-thumb { background: rgba(176, 38, 255, 0.3); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0, 240, 255, 0.5); }
+
+        /* SVG Circle Progress */
+        .progress-ring__circle {
+            transition: stroke-dashoffset 0.5s ease-in-out;
+            transform: rotate(-90deg);
+            transform-origin: 50% 50%;
+        }
+
+        #desktop-only-overlay {
+            display: none;
+        }
+    </style>
+</head>
+    <body class="min-h-screen flex flex-col">
+    
+    <!-- Login Screen -->
+    <div id="login-screen" class="flex-1 flex items-center justify-center p-4 relative z-10">
+        <div class="glass p-10 rounded-3xl w-full max-w-md border border-neon-blue/30 relative overflow-hidden">
+            <div class="absolute -top-20 -right-20 w-40 h-40 bg-neon-purple/20 rounded-full blur-3xl"></div>
+            <div class="absolute -bottom-20 -left-20 w-40 h-40 bg-neon-blue/20 rounded-full blur-3xl"></div>
+            
+            <h2 class="text-3xl font-bold mb-8 text-center neon-text-blue tracking-wider uppercase">Admin Access</h2>
+            <form id="login-form" class="space-y-6 relative z-10">
+                <div>
+                    <label class="block text-xs font-bold mb-2 text-white/60 uppercase tracking-wider">Email</label>
+                    <input type="email" id="email" required class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-neon-blue focus:shadow-[0_0_15px_rgba(0,240,255,0.3)] transition-all">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold mb-2 text-white/60 uppercase tracking-wider">Password</label>
+                    <input type="password" id="password" required class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-neon-purple focus:shadow-[0_0_15px_rgba(176,38,255,0.3)] transition-all">
+                </div>
+                <button type="submit" class="w-full bg-gradient-to-r from-[#00f0ff] to-[#b026ff] text-black font-bold py-3 rounded-xl transition-all hover:opacity-90 hover:shadow-[0_0_20px_rgba(176,38,255,0.5)] uppercase tracking-wider mt-4">Initialize Link</button>
+                <p id="login-error" class="neon-text-red text-sm text-center hidden font-mono"></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- Admin Dashboard -->
+    <div id="admin-dashboard" class="hidden flex-1 flex flex-col h-screen overflow-hidden relative z-10">
+        <!-- Header -->
+        <header class="glass px-6 py-4 flex justify-between items-center shrink-0 border-b border-white/10">
+            <div class="flex items-center gap-3">
+                <i data-lucide="cpu" class="text-[#00f0ff] w-6 h-6"></i>
+                <h1 class="text-2xl font-bold tracking-widest uppercase"><span class="neon-text-blue">Bol-AI</span></h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <button id="refresh-btn" class="refresh-btn px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 uppercase tracking-wider">
+                    <i data-lucide="refresh-cw" class="w-4 h-4" id="refresh-icon"></i> Refresh
+                </button>
+                <button id="logout-btn" class="action-btn px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 uppercase tracking-wider">
+                    <i data-lucide="power" class="w-4 h-4"></i> Disconnect
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="flex-1 flex flex-col overflow-hidden">
+            <!-- Tab Contents -->
+            <main class="flex-1 overflow-y-auto p-4 md:p-8 relative">
+                
+                <!-- Dynamic Title & Navigation -->
+                <div class="mb-8 space-y-6">
+                    <h2 id="active-tab-title" class="text-4xl font-bold neon-text-blue uppercase tracking-widest">System Overview</h2>
+                    
+                    <!-- Horizontal Navigation -->
+                    <nav class="flex overflow-x-auto scrollbar-hide border-b border-white/10 gap-4 pb-2">
+                        <button data-tab="dashboard" class="tab-btn px-6 py-4 hover:bg-white/5 transition-all whitespace-nowrap tab-active font-bold tracking-wider uppercase text-[11px] flex flex-col items-center gap-3 rounded-t-xl min-w-[120px]"><i data-lucide="layout-dashboard" class="w-7 h-7"></i> Overview</button>
+                        <button data-tab="requests" class="tab-btn px-6 py-4 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-[11px] flex flex-col items-center gap-3 rounded-t-xl min-w-[120px]"><i data-lucide="activity" class="w-7 h-7"></i> Traffic</button>
+                        <button data-tab="stats" class="tab-btn px-6 py-4 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-[11px] flex flex-col items-center gap-3 rounded-t-xl min-w-[120px]"><i data-lucide="bar-chart-2" class="w-7 h-7"></i> Stats</button>
+                        <button data-tab="config" class="tab-btn px-6 py-4 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-[11px] flex flex-col items-center gap-3 rounded-t-xl min-w-[120px]"><i data-lucide="sliders" class="w-7 h-7"></i> Engine</button>
+                        <button data-tab="server" class="tab-btn px-6 py-4 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-[11px] flex flex-col items-center gap-3 rounded-t-xl min-w-[120px]"><i data-lucide="server" class="w-7 h-7"></i> Hardware</button>
+                        <button data-tab="settings" class="tab-btn px-6 py-4 hover:bg-white/5 transition-all whitespace-nowrap font-bold tracking-wider uppercase text-[11px] flex flex-col items-center gap-3 rounded-t-xl min-w-[120px]"><i data-lucide="settings" class="w-7 h-7"></i> Settings</button>
+                    </nav>
+                </div>
+
+                <!-- Dashboard Tab -->
+                <div id="tab-dashboard" class="tab-content space-y-8">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5 card-3d">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Today's Traffic</h3>
+                            <p id="today-requests" class="text-4xl font-bold neon-text-blue font-mono">0</p>
+                        </div>
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5 card-3d">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Total Traffic</h3>
+                            <p id="total-requests" class="text-4xl font-bold neon-text-purple font-mono">0</p>
+                        </div>
+                        <div class="glass p-6 rounded-2xl relative overflow-hidden group border border-white/5 card-3d">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Run Time</h3>
+                            <p id="daily-run-time" class="text-4xl font-bold neon-text-red font-mono">0s</p>
+                        </div>
+                    </div>
+
+                    <div class="glass rounded-2xl overflow-hidden flex flex-col border border-white/10">
+                        <div class="p-6 border-b border-white/10 flex justify-between items-center gap-4 flex-wrap bg-black/40">
+                            <h3 class="font-bold text-lg uppercase tracking-widest flex items-center gap-2"><i data-lucide="users" class="w-5 h-5 text-[#00f0ff]"></i> Users</h3>
+                            <div class="relative w-full md:w-72">
+                                <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40"></i>
+                                <input type="text" id="user-search" placeholder="Search users..." class="bg-black/50 border border-white/20 rounded-xl pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-[#00f0ff] w-full transition-all font-mono">
+                            </div>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-black/60 text-white/50 uppercase tracking-wider text-[10px]">
+                                    <tr>
+                                        <th class="px-6 py-4 font-bold">User</th>
+                                        <th class="px-6 py-4 font-bold">Email</th>
+                                        <th class="px-6 py-4 font-bold">User ID</th>
+                                        <th class="px-6 py-4 font-bold text-right">Last Seen</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="users-table-body" class="divide-y divide-white/5 font-mono text-white/80">
+                                    <!-- Users will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Image Config Tab -->
+                <!-- Engine Tab -->
+                <div id="tab-config" class="tab-content hidden space-y-8">
+                    <div class="glass p-8 rounded-2xl max-w-2xl border border-white/10 space-y-8 card-3d">
+                        <div class="space-y-4">
+                            <h3 class="font-bold text-lg text-[#b026ff] flex items-center gap-2"><i data-lucide="shield-check" class="w-5 h-5"></i> Security & Limits</h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Rate Limit (Requests per Minute)</label>
+                                    <input type="number" id="config-rate-limit" value="10" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-purple transition-all font-mono text-sm">
+                                    <p class="text-[9px] text-white/30 mt-2 italic">Maximum number of image generation requests a single user can send in one minute. (Prevents Spam/Abuse)</p>
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold mb-2 text-white/40 uppercase tracking-widest">Max Concurrent Generations</label>
+                                    <input type="number" id="config-max-concurrent" value="2" class="w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white focus:border-neon-purple transition-all font-mono text-sm">
+                                    <p class="text-[9px] text-white/30 mt-2 italic">Maximum number of images the server can generate at the same time globally. (Prevents Server Overload)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button id="save-config-btn" class="w-full bg-[#00f0ff] text-black font-black py-5 rounded-xl hover:bg-white transition-all uppercase tracking-[0.2em] text-sm shadow-[0_0_30px_rgba(0,240,255,0.4)] active:scale-[0.98]">Update Engine Config</button>
+                    </div>
+                    
+                    <div class="glass p-8 rounded-2xl max-w-2xl border border-white/10 space-y-8 card-3d mt-6">
+                        <div class="space-y-4">
+                            <h3 class="font-bold text-lg text-[#ff003c] flex items-center gap-2"><i data-lucide="trash-2" class="w-5 h-5"></i> Maintenance</h3>
+                            <p class="text-sm text-white/50 mt-1 font-mono">Clean up stuck requests that have been processing for more than 6 minutes.</p>
+                            <button id="cleanup-requests-btn" class="w-full bg-[#ff003c]/10 text-[#ff003c] border border-[#ff003c] font-bold py-3 rounded-xl transition-all hover:bg-[#ff003c] hover:text-white uppercase tracking-wider text-sm">Cleanup Stuck Requests</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Server Status Tab (Hardware Monitor) -->
+                <div id="tab-server" class="tab-content hidden space-y-8">
+                    <div class="flex justify-between items-end">
+                        <div>
+                            <h2 class="text-3xl font-bold neon-text-purple uppercase tracking-widest">Hardware Monitor</h2>
+                            <p class="text-white/50 text-sm mt-2 font-mono flex items-center gap-2">Core Engine: Bol-AI-img (Proprietary 8K)</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-white/50 text-xs uppercase tracking-widest font-bold mb-1">Server Uptime</p>
+                            <p id="uptime-display" class="text-2xl font-bold neon-text-blue font-mono">00:00:00</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <!-- RAM Card -->
+                        <div class="glass p-8 rounded-2xl flex flex-col items-center relative overflow-hidden border-t-4 border-t-[#00f0ff]">
+                            <h3 class="text-white/50 text-xs font-bold mb-6 uppercase tracking-widest w-full text-left">System Memory (RAM)</h3>
+                            <div class="relative w-40 h-40 flex items-center justify-center mb-4">
+                                <svg class="w-full h-full" viewBox="0 0 120 120">
+                                    <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12" />
+                                    <circle id="ram-circle" class="progress-ring__circle" cx="60" cy="60" r="54" fill="none" stroke="#00f0ff" stroke-width="12" stroke-dasharray="339.292" stroke-dashoffset="339.292" stroke-linecap="round" />
+                                </svg>
+                                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span id="ram-percent" class="text-2xl font-bold font-mono text-[#00f0ff]">0%</span>
+                                </div>
+                            </div>
+                            <p id="ram-text" class="font-mono text-sm text-white/80 bg-black/50 px-4 py-2 rounded-lg border border-white/10">0GB / 512GB</p>
+                        </div>
+
+                        <!-- GPU Card -->
+                        <div class="glass p-8 rounded-2xl flex flex-col items-center relative overflow-hidden border-t-4 border-t-[#b026ff]">
+                            <h3 class="text-white/50 text-xs font-bold mb-6 uppercase tracking-widest w-full text-left">Neural Processor (GPU) - 128 Core</h3>
+                            <div class="relative w-40 h-40 flex items-center justify-center mb-4">
+                                <svg class="w-full h-full" viewBox="0 0 120 120">
+                                    <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12" />
+                                    <circle id="gpu-circle" class="progress-ring__circle" cx="60" cy="60" r="54" fill="none" stroke="#b026ff" stroke-width="12" stroke-dasharray="339.292" stroke-dashoffset="339.292" stroke-linecap="round" />
+                                </svg>
+                                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span id="gpu-percent" class="text-2xl font-bold font-mono text-[#b026ff]">0%</span>
+                                </div>
+                            </div>
+                            <p id="gpu-text" class="font-mono text-sm text-white/80 bg-black/50 px-4 py-2 rounded-lg border border-white/10">0GB / 128GB</p>
+                        </div>
+
+                        <!-- Storage Card -->
+                        <div class="glass p-8 rounded-2xl flex flex-col items-center relative overflow-hidden border-t-4 border-t-[#ff003c]">
+                            <h3 class="text-white/50 text-xs font-bold mb-6 uppercase tracking-widest w-full text-left">Storage Array</h3>
+                            <div class="relative w-40 h-40 flex items-center justify-center mb-4">
+                                <svg class="w-full h-full" viewBox="0 0 120 120">
+                                    <circle cx="60" cy="60" r="54" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="12" />
+                                    <circle id="storage-circle" class="progress-ring__circle" cx="60" cy="60" r="54" fill="none" stroke="#ff003c" stroke-width="12" stroke-dasharray="339.292" stroke-dashoffset="337.4" stroke-linecap="round" />
+                                </svg>
+                                <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span class="text-2xl font-bold font-mono text-[#ff003c]">0.5%</span>
+                                </div>
+                            </div>
+                            <p class="font-mono text-sm text-white/80 bg-black/50 px-4 py-2 rounded-lg border border-white/10">53.79GB / 10TB</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Requests Tab -->
+                <div id="tab-requests" class="tab-content hidden space-y-8">
+                    <div class="flex justify-between items-center">
+                        <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">Traffic</h2>
+                        <div class="glass px-4 py-2 rounded-xl border border-white/10 max-w-xs">
+                            <p class="text-[9px] text-white/40 uppercase font-bold mb-1">What is Traffic?</p>
+                            <p class="text-[10px] text-white/60 leading-tight">Traffic logs every image generation attempt. You can monitor user prompts, AI enhancements, IP addresses, and output results in real-time.</p>
+                        </div>
+                    </div>
+                    <div class="glass rounded-2xl overflow-hidden border border-white/10">
+                        <div class="p-4 bg-black/40 border-b border-white/10">
+                            <p class="text-[10px] text-white/40 uppercase tracking-widest font-bold">Click any row to see full details</p>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm">
+                                <thead class="bg-black/60 text-white/50 uppercase tracking-wider text-[10px]">
+                                    <tr>
+                                        <th class="px-6 py-4 font-bold">Time</th>
+                                        <th class="px-6 py-4 font-bold">User</th>
+                                        <th class="px-6 py-4 font-bold">IP Address</th>
+                                        <th class="px-6 py-4 font-bold">Image</th>
+                                        <th class="px-6 py-4 font-bold">Status</th>
+                                        <th class="px-6 py-4 font-bold text-right">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="requests-table-body" class="divide-y divide-white/5 font-mono text-white/80">
+                                    <!-- Requests will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stats Tab -->
+                <div id="tab-stats" class="tab-content hidden space-y-8">
+                    <h2 class="text-3xl font-bold neon-text-purple uppercase tracking-widest">Stats</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="glass p-8 rounded-2xl border-l-4 border-l-green-500">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Success</h3>
+                            <p id="stat-total-images" class="text-4xl font-bold text-green-400 font-mono">0</p>
+                        </div>
+                        <div class="glass p-8 rounded-2xl border-l-4 border-l-red-500">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Failed</h3>
+                            <p id="stat-total-errors" class="text-4xl font-bold text-red-400 font-mono">0</p>
+                        </div>
+                        <div class="glass p-8 rounded-2xl border-l-4 border-l-orange-500">
+                            <h3 class="text-white/50 text-[10px] font-bold mb-2 uppercase tracking-widest">Error Rate</h3>
+                            <p id="stat-error-rate" class="text-4xl font-bold text-orange-400 font-mono">0%</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Tab -->
+                <div id="tab-settings" class="tab-content hidden space-y-8">
+                    <h2 class="text-3xl font-bold neon-text-blue uppercase tracking-widest">Settings</h2>
+                    <div class="glass p-8 rounded-2xl max-w-2xl border border-white/10 space-y-6">
+                        <div class="flex flex-col gap-4 p-4 bg-black/40 rounded-xl border border-white/5">
+                            <div>
+                                <h3 class="font-bold text-lg text-[#ff003c] flex items-center gap-2"><i data-lucide="alert-triangle" class="w-5 h-5"></i> Manifesting Mode</h3>
+                                <p class="text-sm text-white/50 mt-1 font-mono">Turn on maintenance mode for all users.</p>
+                            </div>
+                            <select id="maintenance-select" class="bg-black/80 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#ff003c] transition-all font-mono">
+                                <option value="0">Off (Normal)</option>
+                                <option value="1">Full (Disable All)</option>
+                                <option value="2">Soft (Server Error)</option>
+                            </select>
+                        </div>
+
+                        <div class="flex flex-col gap-4 p-4 bg-black/40 rounded-xl border border-white/5">
+                            <div>
+                                <h3 class="font-bold text-lg text-[#00f0ff] flex items-center gap-2"><i data-lucide="image-plus" class="w-5 h-5"></i> Add Example</h3>
+                                <p class="text-sm text-white/50 mt-1 font-mono">Add a new image to the home gallery.</p>
+                            </div>
+                            <form id="add-example-form" class="space-y-4">
+                                <input type="text" id="example-prompt" placeholder="Prompt" required class="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#00f0ff] transition-all font-mono text-sm">
+                                <input type="url" id="example-url" placeholder="Image URL" required class="w-full bg-black/50 border border-white/20 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-[#00f0ff] transition-all font-mono text-sm">
+                                <button type="submit" class="w-full bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff] font-bold py-3 rounded-xl transition-all hover:bg-[#00f0ff] hover:text-black uppercase tracking-wider text-sm">Save Example</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
+            </main>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-auth.js";
+        import { getFirestore, collection, query, orderBy, getDocs, doc, setDoc, getDoc, onSnapshot, limit, deleteDoc } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore.js";
+        import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app-check.js";
+
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyDMHcNptC79noIVzoDyc7YTQNLNkRpOXZ8",
+            authDomain: "bol-ai-img.firebaseapp.com",
+            projectId: "bol-ai-img",
+            storageBucket: "bol-ai-img.firebasestorage.app",
+            messagingSenderId: "1035193114183",
+            appId: "1:1035193114183:web:979451e3b13628b93c9b62"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        
+        // Initialize App Check
+        const appCheck = initializeAppCheck(app, {
+            provider: new ReCaptchaV3Provider('6Lc1sZwsAAAAAOIHBQaiVrl-NTL6wM9aIEK1jds3'),
+            isTokenAutoRefreshEnabled: true
+        });
+
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // UI Elements
+        const loginScreen = document.getElementById('login-screen');
+        const adminDashboard = document.getElementById('admin-dashboard');
+        const loginForm = document.getElementById('login-form');
+        const loginError = document.getElementById('login-error');
+        const logoutBtn = document.getElementById('logout-btn');
+        const refreshBtn = document.getElementById('refresh-btn');
+        const refreshIcon = document.getElementById('refresh-icon');
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const tabContents = document.querySelectorAll('.tab-content');
+        const userSearch = document.getElementById('user-search');
+
+        let allUsers = [];
+        let activeRequestsCount = 0;
+
+        // Uptime Counter
+        let uptimeSeconds = 0;
+        setInterval(() => {
+            uptimeSeconds++;
+            const h = Math.floor(uptimeSeconds / 3600).toString().padStart(2, '0');
+            const m = Math.floor((uptimeSeconds % 3600) / 60).toString().padStart(2, '0');
+            const s = (uptimeSeconds % 60).toString().padStart(2, '0');
+            document.getElementById('uptime-display').textContent = `${h}:${m}:${s}`;
+        }, 1000);
+
+        // Hardware Stats Updater
+        function updateHardwareStats() {
+            // RAM Logic (Base 12GB + 8GB per active request, Max 512GB)
+            const maxRam = 512;
+            const currentRam = Math.min(12 + (activeRequestsCount * 8), maxRam);
+            const ramPercent = (currentRam / maxRam) * 100;
+            
+            // GPU Logic (Base 4GB + 12GB per active request, Max 128GB)
+            const maxGpu = 128;
+            const currentGpu = Math.min(4 + (activeRequestsCount * 12), maxGpu);
+            const gpuPercent = (currentGpu / maxGpu) * 100;
+
+            // Update Text
+            document.getElementById('ram-text').textContent = `${currentRam}GB / ${maxRam}GB`;
+            document.getElementById('ram-percent').textContent = `${Math.round(ramPercent)}%`;
+            
+            document.getElementById('gpu-text').textContent = `${currentGpu}GB / ${maxGpu}GB`;
+            document.getElementById('gpu-percent').textContent = `${Math.round(gpuPercent)}%`;
+
+            // Update SVG Circles (Circumference = 2 * PI * 54 = 339.292)
+            const circ = 339.292;
+            document.getElementById('ram-circle').style.strokeDashoffset = circ - (ramPercent / 100) * circ;
+            document.getElementById('gpu-circle').style.strokeDashoffset = circ - (gpuPercent / 100) * circ;
+        }
+
+        // Auth State
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                loginScreen.classList.add('hidden');
+                adminDashboard.classList.remove('hidden');
+                loadData();
+            } else {
+                loginScreen.classList.remove('hidden');
+                adminDashboard.classList.add('hidden');
+            }
+        });
+
+        // Login
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            try {
+                await signInWithEmailAndPassword(auth, email, password);
+                loginError.classList.add('hidden');
+            } catch (error) {
+                loginError.textContent = "ACCESS DENIED: " + error.message;
+                loginError.classList.remove('hidden');
+            }
+        });
+
+        // Logout
+        logoutBtn.addEventListener('click', () => signOut(auth));
+
+        // Refresh
+        refreshBtn.addEventListener('click', () => {
+            refreshIcon.classList.add('refresh-spin');
+            setTimeout(() => refreshIcon.classList.remove('refresh-spin'), 1000);
+            // Data is real-time via onSnapshot, but we can re-trigger UI updates if needed
+            updateHardwareStats();
+        });
+
+        // Tabs
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                tabBtns.forEach(b => b.classList.remove('tab-active'));
+                tabContents.forEach(c => c.classList.add('hidden'));
+                btn.classList.add('tab-active');
+                document.getElementById(`tab-${btn.dataset.tab}`).classList.remove('hidden');
+                
+                // Update Title
+                const titleMap = {
+                    'dashboard': 'System Overview',
+                    'requests': 'Traffic Logs',
+                    'stats': 'Analytics',
+                    'config': 'Image Generation Engine',
+                    'server': 'Hardware Monitor',
+                    'settings': 'Global Settings'
+                };
+                document.getElementById('active-tab-title').textContent = titleMap[btn.dataset.tab];
+            });
+        });
+
+        // Load Data
+        async function loadData() {
+            // Cleanup stuck requests (older than 6 minutes)
+            const cleanupStuckRequests = async () => {
+                const now = new Date();
+                const sixMinsAgo = new Date(now.getTime() - 6 * 60 * 1000);
+                
+                const stuckQuery = query(
+                    collection(db, 'requests'), 
+                    orderBy('createdAt', 'asc'),
+                    limit(50)
+                );
+                
+                const snapshot = await getDocs(stuckQuery);
+                snapshot.forEach(async (docSnap) => {
+                    const data = docSnap.data();
+                    if (data.status === 'active' && data.createdAt && data.createdAt.toDate() < sixMinsAgo) {
+                        console.log(`Cleaning up stuck request: ${docSnap.id}`);
+                        await setDoc(doc(db, 'requests', docSnap.id), {
+                            status: 'error',
+                            error: 'Request Timeout (6m)',
+                            durationMs: 360000
+                        }, { merge: true });
+                    }
+                });
+            };
+
+            // Run cleanup every minute
+            cleanupStuckRequests();
+            setInterval(cleanupStuckRequests, 60000);
+
+            // 1. Users
+            const usersQuery = query(collection(db, 'users'), orderBy('lastLogin', 'desc'));
+            onSnapshot(usersQuery, (snapshot) => {
+                allUsers = [];
+                snapshot.forEach(doc => allUsers.push(doc.data()));
+                renderUsers(allUsers);
+            }, (error) => {
+                console.error("Error fetching users:", error);
+                if (error.code === 'permission-denied') {
+                    alert("Permission denied to read users. Please check your Firestore rules.");
+                }
+            });
+
+            // 2. Requests & Stats
+            const reqQuery = query(collection(db, 'requests'), orderBy('createdAt', 'desc'), limit(500));
+            onSnapshot(reqQuery, (snapshot) => {
+                const requestsBody = document.getElementById('requests-table-body');
+                requestsBody.innerHTML = '';
+                
+                let todayCount = 0;
+                let totalCount = snapshot.size;
+                let completedCount = 0;
+                let errorCount = 0;
+                let dailyRunTimeMs = 0;
+                activeRequestsCount = 0;
+
+                const today = new Date();
+                today.setHours(0,0,0,0);
+
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    const reqId = docSnap.id;
+                    const date = data.createdAt ? data.createdAt.toDate() : new Date();
+                    
+                    if (date >= today) {
+                        todayCount++;
+                        if (data.durationMs) dailyRunTimeMs += data.durationMs;
+                    }
+                    if (data.status === 'completed') completedCount++;
+                    if (data.status === 'error') errorCount++;
+                    if (data.status === 'active') activeRequestsCount++;
+
+                    // Render Request Row
+                    const tr = document.createElement('tr');
+                    tr.className = "traffic-row hover:bg-white/5 transition-colors";
+                    tr.onclick = () => {
+                        const detailRow = document.getElementById(`detail-${reqId}`);
+                        detailRow.classList.toggle('active');
+                    };
+                    
+                    let statusHtml = '';
+                    if (data.status === 'active') statusHtml = '<span class="text-[#00f0ff] animate-pulse">●</span>';
+                    else if (data.status === 'completed') statusHtml = '<span class="text-green-400">●</span>';
+                    else statusHtml = '<span class="text-red-400">●</span>';
+
+                    const ipLink = data.userIp ? `<a href="https://ipinfo.io/${data.userIp}" target="_blank" class="text-[#00f0ff] hover:underline" onclick="event.stopPropagation()">${data.userIp}</a>` : 'Unknown';
+                    const userDisplay = data.userEmail || data.userId || 'Guest';
+                    const imageLink = data.imageUrl ? `<a href="${data.imageUrl}" target="_blank" class="text-green-400 hover:underline flex items-center gap-1" onclick="event.stopPropagation()"><i data-lucide="external-link" class="w-3 h-3"></i> Link</a>` : '<span class="text-white/20 italic">No Image</span>';
+
+                    tr.innerHTML = `
+                        <td class="px-6 py-4 whitespace-nowrap text-[10px]">${date.toLocaleTimeString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-xs font-bold text-white/90">${userDisplay}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-xs">${ipLink}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-xs">${imageLink}</td>
+                        <td class="px-6 py-4">${statusHtml}</td>
+                        <td class="px-6 py-4 text-right">
+                            <button onclick="event.stopPropagation(); deleteRequest('${reqId}')" class="text-red-500 hover:text-red-400 p-1">
+                                <i data-lucide="trash-2" class="w-3 h-3"></i>
+                            </button>
+                        </td>
+                    `;
+                    
+                    const detailTr = document.createElement('tr');
+                    detailTr.id = `detail-${reqId}`;
+                    detailTr.className = "detail-row";
+                    detailTr.innerHTML = `
+                        <td colspan="6" class="px-6 py-6 border-b border-white/5">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div class="space-y-3">
+                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Prompt Analysis</p>
+                                    <div class="space-y-4">
+                                        <div>
+                                            <p class="text-[9px] text-neon-blue font-bold uppercase mb-1">User Original</p>
+                                            <p class="text-xs text-white/80 leading-relaxed bg-black/30 p-3 rounded-lg border border-white/5">${data.prompt}</p>
+                                        </div>
+                                        ${data.enhancedPrompt ? `
+                                        <div>
+                                            <p class="text-[9px] text-neon-purple font-bold uppercase mb-1">AI Enhanced (8K)</p>
+                                            <p class="text-xs text-white/80 leading-relaxed bg-black/30 p-3 rounded-lg border border-white/5 italic">${data.enhancedPrompt}</p>
+                                        </div>
+                                        ` : ''}
+                                    </div>
+                                    <div class="flex gap-4 text-[10px] pt-4">
+                                        <p><span class="text-white/40">USER ID:</span> ${data.userId || 'N/A'}</p>
+                                        <p><span class="text-white/40">EMAIL:</span> ${data.userEmail || 'N/A'}</p>
+                                    </div>
+                                </div>
+                                <div class="space-y-3">
+                                    <p class="text-[10px] uppercase tracking-widest font-bold text-white/40">Visual Context</p>
+                                    <div class="grid grid-cols-1 gap-4">
+                                        ${data.referenceImageUrl ? `
+                                            <div>
+                                                <p class="text-[9px] text-neon-blue font-bold uppercase mb-1">Reference Image (User Input)</p>
+                                                <div class="relative group max-w-xs">
+                                                    <img src="${data.referenceImageUrl}" 
+                                                         onerror="this.src='https://placehold.co/600x400/000000/00f0ff?text=Ref+Image+Expired'"
+                                                         class="w-full rounded-lg border border-white/10 shadow-lg group-hover:scale-[1.02] transition-transform duration-500">
+                                                    <div class="absolute inset-0 flex items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-all rounded-lg backdrop-blur-sm">
+                                                        <a href="${data.referenceImageUrl}" target="_blank" class="px-4 py-1.5 bg-neon-blue text-black font-bold text-[9px] uppercase tracking-widest rounded-full">View Ref</a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ` : ''}
+                                        
+                                        <div>
+                                            <p class="text-[9px] text-green-400 font-bold uppercase mb-1">AI Output Render</p>
+                                            ${data.imageUrl ? `
+                                                <div class="relative group max-w-xs">
+                                                    <img src="${data.imageUrl}" 
+                                                         onerror="this.src='https://placehold.co/600x400/000000/00f0ff?text=Image+Expired+or+Private'"
+                                                         class="w-full rounded-lg border border-white/10 shadow-[0_0_30px_rgba(0,0,0,0.5)] group-hover:scale-[1.02] transition-transform duration-500">
+                                                    <div class="absolute inset-0 flex items-center justify-center bg-black/80 opacity-0 group-hover:opacity-100 transition-all rounded-lg backdrop-blur-sm">
+                                                        <a href="${data.imageUrl}" target="_blank" class="px-6 py-2 bg-neon-blue text-black font-bold text-[10px] uppercase tracking-widest rounded-full shadow-[0_0_20px_rgba(0,240,255,0.5)]">Open Original</a>
+                                                    </div>
+                                                </div>
+                                                <div class="mt-3 flex items-center gap-2 max-w-xs">
+                                                    <input type="text" readonly value="${data.imageUrl}" class="w-full bg-black/50 border border-white/10 rounded-lg px-3 py-2 text-[10px] text-white/60 focus:outline-none focus:border-neon-blue transition-colors">
+                                                    <button onclick="navigator.clipboard.writeText('${data.imageUrl}'); alert('Link copied!')" class="p-2 bg-white/5 hover:bg-white/10 rounded-lg text-white/80 transition-colors" title="Copy Link">
+                                                        <i data-lucide="copy" class="w-4 h-4"></i>
+                                                    </button>
+                                                </div>
+                                            ` : '<p class="text-xs text-white/20 italic">No output generated</p>'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    `;
+
+                    requestsBody.appendChild(tr);
+                    requestsBody.appendChild(detailTr);
+                });
+
+                // Update Stats
+                document.getElementById('today-requests').textContent = todayCount;
+                document.getElementById('total-requests').textContent = totalCount;
+                document.getElementById('stat-total-images').textContent = completedCount;
+                document.getElementById('stat-total-errors').textContent = errorCount;
+                
+                // Format Run Time
+                let runTimeText = '0m';
+                const totalMinutes = Math.floor(dailyRunTimeMs / (1000 * 60));
+                if (totalMinutes < 60) {
+                    runTimeText = `${totalMinutes}m`;
+                } else {
+                    const hours = Math.floor(totalMinutes / 60);
+                    const mins = totalMinutes % 60;
+                    runTimeText = `${hours}h ${mins}m`;
+                }
+                document.getElementById('daily-run-time').textContent = runTimeText;
+                
+                const rate = totalCount > 0 ? Math.round((errorCount / totalCount) * 100) : 0;
+                document.getElementById('stat-error-rate').textContent = rate + '%';
+
+                // Update Hardware Monitor based on active requests
+                updateHardwareStats();
+                
+                // Re-init icons for new rows
+                lucide.createIcons();
+            }, (error) => {
+                console.error("Error fetching requests:", error);
+            });
+
+            // 3. Settings
+            const settingsRef = doc(db, 'settings', 'general');
+            onSnapshot(settingsRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    const mode = data.maintenanceMode;
+                    const select = document.getElementById('maintenance-select');
+                    if (mode === true || mode === 1 || mode === '1') select.value = '1';
+                    else if (mode === 2 || mode === '2') select.value = '2';
+                    else select.value = '0';
+
+                    // Load Config
+                    if (data.rateLimit) document.getElementById('config-rate-limit').value = data.rateLimit;
+                    if (data.maxConcurrent) document.getElementById('config-max-concurrent').value = data.maxConcurrent;
+                }
+            }, (error) => {
+                console.error("Error fetching settings:", error);
+            });
+        }
+
+        // Save Config
+        document.getElementById('save-config-btn').addEventListener('click', async () => {
+            const rateLimit = parseInt(document.getElementById('config-rate-limit').value);
+            const maxConcurrent = parseInt(document.getElementById('config-max-concurrent').value);
+            
+            const btn = document.getElementById('save-config-btn');
+            const originalText = btn.textContent;
+
+            try {
+                btn.textContent = 'Updating...';
+                btn.disabled = true;
+                await setDoc(doc(db, 'settings', 'general'), {
+                    rateLimit: rateLimit,
+                    maxConcurrent: maxConcurrent
+                }, { merge: true });
+                alert('Engine configuration updated successfully!');
+            } catch (err) {
+                alert('Update failed: ' + err.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        // Cleanup Stuck Requests
+        document.getElementById('cleanup-requests-btn').addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to clean up stuck requests? This will mark any request processing for more than 6 minutes as failed.')) return;
+            
+            const btn = document.getElementById('cleanup-requests-btn');
+            const originalText = btn.textContent;
+            
+            try {
+                btn.textContent = 'Cleaning up...';
+                btn.disabled = true;
+                
+                const q = query(collection(db, 'requests'));
+                const snapshot = await getDocs(q);
+                let cleanedCount = 0;
+                
+                const now = Date.now();
+                const timeoutMs = 360000; // 6 minutes
+                
+                const batch = [];
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    if (data.status === 'processing' || data.status === 'pending') {
+                        const createdAt = data.createdAt?.toMillis() || 0;
+                        if (now - createdAt > timeoutMs) {
+                            batch.push(setDoc(doc(db, 'requests', docSnap.id), {
+                                status: 'error',
+                                error: 'Timeout: Request was stuck in processing for too long.'
+                            }, { merge: true }));
+                            cleanedCount++;
+                        }
+                    }
+                });
+                
+                await Promise.all(batch);
+                alert(`Cleanup complete. Fixed ${cleanedCount} stuck requests.`);
+            } catch (err) {
+                alert('Cleanup failed: ' + err.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        });
+
+        // Make deleteRequest available globally
+        window.deleteRequest = async (reqId) => {
+            if(confirm('Are you sure you want to delete this request?')) {
+                try {
+                    await deleteDoc(doc(db, 'requests', reqId));
+                } catch (err) {
+                    alert('Failed to delete: ' + err.message);
+                }
+            }
+        };
+
+        // Render Users
+        function renderUsers(users) {
+            const tbody = document.getElementById('users-table-body');
+            tbody.innerHTML = '';
+            users.forEach(u => {
+                const date = u.lastLogin ? u.lastLogin.toDate().toLocaleDateString() : 'N/A';
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-white/5 transition-colors";
+                tr.innerHTML = `
+                    <td class="px-6 py-4 flex items-center gap-3">
+                        ${u.photoURL ? `<img src="${u.photoURL}" class="w-6 h-6 rounded-full border border-white/20">` : '<div class="w-6 h-6 rounded-full bg-white/10 flex items-center justify-center"><i data-lucide="user" class="w-3 h-3 text-white/50"></i></div>'}
+                        <span class="font-bold text-white/90 text-xs">${u.displayName || 'Guest'}</span>
+                    </td>
+                    <td class="px-6 py-4 text-white/60 text-xs">${u.email || 'N/A'}</td>
+                    <td class="px-6 py-4 text-[10px] text-[#b026ff]">${u.uid}</td>
+                    <td class="px-6 py-4 text-[10px] text-white/40 text-right">${date}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            lucide.createIcons();
+        }
+
+        // Search Users
+        userSearch.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = allUsers.filter(u => 
+                (u.displayName && u.displayName.toLowerCase().includes(term)) || 
+                (u.email && u.email.toLowerCase().includes(term)) ||
+                (u.uid && u.uid.toLowerCase().includes(term))
+            );
+            renderUsers(filtered);
+        });
+
+        // Toggle Maintenance
+        document.getElementById('maintenance-select').addEventListener('change', async (e) => {
+            try {
+                const val = parseInt(e.target.value);
+                await setDoc(doc(db, 'settings', 'general'), { maintenanceMode: val }, { merge: true });
+            } catch (err) {
+                alert("SYSTEM OVERRIDE FAILED: " + err.message);
+            }
+        });
+
+        // Add Example
+        document.getElementById('add-example-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const prompt = document.getElementById('example-prompt').value;
+            const url = document.getElementById('example-url').value;
+            const btn = e.target.querySelector('button');
+            const originalText = btn.textContent;
+            
+            try {
+                btn.textContent = 'Adding...';
+                btn.disabled = true;
+                
+                const newExampleRef = doc(collection(db, 'examples'));
+                await setDoc(newExampleRef, {
+                    prompt: prompt,
+                    imageUrl: url,
+                    createdAt: new Date()
+                });
+                
+                e.target.reset();
+                alert('Example added successfully!');
+            } catch (err) {
+                alert('Failed to add example: ' + err.message);
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        });
+
+    </script>
+</body>
 </html>
