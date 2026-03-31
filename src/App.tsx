@@ -452,7 +452,8 @@ export default function App() {
             throw new Error("Bol-AI succeeded but returned no images.");
           }
         } else if (statusData.task_status === "FAILED") {
-          throw new Error("Bol-AI failed to generate image.");
+          const errorMsg = statusData.message || statusData.error_msg || "Bol-AI failed to generate image.";
+          throw new Error(errorMsg);
         }
       }
 

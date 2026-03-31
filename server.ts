@@ -108,10 +108,10 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
 
     let enhancedText = prompt;
     try {
-      // Re-enabling Gemma 2 27B IT as specifically requested by the user
-      console.log("Attempting prompt enhancement with Gemma 2 27B IT...");
+      // User strictly requested Gemma 3 27B IT (gemma-3-27b-it)
+      console.log("Enhancing prompt with Gemma 3 27B IT (Exclusive Mode)...");
       const response = await ai.models.generateContent({
-        model: "gemma-2-27b-it",
+        model: "gemma-3-27b-it",
         contents: upgradeInstruction,
         config: {
           temperature: 0.7,
@@ -120,23 +120,11 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
         }
       });
       enhancedText = response.text || prompt;
-      console.log("Gemma 2 27B IT enhancement successful.");
+      console.log("Gemma 3 27B IT enhancement successful.");
     } catch (gemmaError: any) {
-      console.error("Gemma 2 27B IT Error:", gemmaError.message);
-      
-      // Fallback to Gemini 3.1 Flash Lite if Gemma fails
-      try {
-        console.log("Gemma failed, falling back to Gemini 3.1 Flash Lite for stability...");
-        const response = await ai.models.generateContent({
-          model: "gemini-3.1-flash-lite-preview",
-          contents: upgradeInstruction
-        });
-        enhancedText = response.text || prompt;
-        console.log("Gemini fallback enhancement successful.");
-      } catch (fallbackError: any) {
-        console.warn("Both models failed, using original prompt:", fallbackError.message);
-        enhancedText = prompt;
-      }
+      console.error("Gemma 3 27B IT Error:", gemmaError.message);
+      // No fallback as per user request
+      enhancedText = prompt;
     }
 
     if (enhancedText.length > 2000) {
@@ -226,6 +214,7 @@ app.post("/api/generate", rateLimiter, async (req, res) => {
     }
 
     console.log(`Starting generation for model: ${model}, prompt: ${userPrompt.substring(0, 50)}...`);
+    console.log(`Request Body: ${JSON.stringify(requestBody)}`);
 
     const response = await fetchWithRetry(`${baseUrl}v1/images/generations`, {
       method: 'POST',
@@ -281,6 +270,9 @@ app.get("/api/tasks/:taskId", async (req, res) => {
     }
 
     const data = await resultResponse.json() as any;
+    if (data.task_status === "FAILED") {
+      console.error(`Task ${taskId} FAILED:`, JSON.stringify(data));
+    }
     res.json(data);
   } catch (error: any) {
     console.error("Task Check Error:", error);
