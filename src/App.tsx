@@ -7,9 +7,9 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid, ChevronLeft, ChevronRight, Maximize, Cpu, ChevronDown, Wand2, UserCircle, LogOut, X, Menu, Trash2, Share2, AlertTriangle, Zap, ShieldCheck, Mail, ImagePlus, Copy, Edit } from 'lucide-react';
-import { auth, googleProvider, db } from './lib/firebase';
+import { auth, googleProvider, db, handleFirestoreError, OperationType } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
-import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot, increment } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot, increment, getDocFromServer } from 'firebase/firestore';
 import { ImageEditor } from './components/ImageEditor';
 
 // Add your example image URLs here! You can use local paths or full URLs.
@@ -23,56 +23,6 @@ const EXAMPLE_IMAGES = [
   'https://i.ibb.co/4ZP81Tr7/v11.png'
 ];
 
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -185,6 +135,17 @@ function AppContent() {
   });
 
   useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error: any) {
+        if (error.message?.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. The client is offline.");
+        }
+      }
+    };
+    testConnection();
+
     const unsub = onSnapshot(doc(db, 'settings', 'general'), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -195,7 +156,7 @@ function AppContent() {
         setUserLimit(data.userLimit || 10);
       }
     }, (error) => {
-      console.error("Error fetching settings:", error);
+      handleFirestoreError(error, OperationType.GET, 'settings/general');
     });
     return () => unsub();
   }, []);
@@ -225,9 +186,12 @@ function AppContent() {
       });
   }, []);
 
+  const [isAuthInitialized, setIsAuthInitialized] = useState(false);
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
+      setIsAuthInitialized(true);
       if (currentUser) {
         // Track user login in Firestore for Admin Panel
         setDoc(doc(db, 'users', currentUser.uid), {
@@ -565,6 +529,36 @@ function AppContent() {
       setIsEnhancing(false);
     }
   };
+
+  const [isAppReady, setIsAppReady] = useState(false);
+
+  useEffect(() => {
+    if (isAuthInitialized) {
+      const timer = setTimeout(() => setIsAppReady(true), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isAuthInitialized]);
+
+  if ((!isAppReady || !isAuthInitialized) && activePage === 'home') {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center"
+        >
+          <div className="relative w-24 h-24 mb-8 mx-auto">
+            <div className="absolute inset-0 bg-neon-blue/20 blur-2xl rounded-full animate-pulse" />
+            <Loader2 className="w-24 h-24 text-neon-blue animate-spin relative z-10" />
+          </div>
+          <h1 className="text-4xl font-display font-bold tracking-tighter text-white mb-2">
+            BOL-<span className="text-neon-blue">AI</span>
+          </h1>
+          <p className="text-white/40 text-sm tracking-[0.2em] uppercase font-bold">Initializing Quantum Core</p>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen font-sans selection:bg-neon-blue/30">

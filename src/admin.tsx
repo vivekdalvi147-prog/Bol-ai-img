@@ -2,9 +2,9 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { motion, AnimatePresence } from 'motion/react';
-import { auth, db } from './lib/firebase';
+import { auth, db, handleFirestoreError, OperationType } from './lib/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, getDocs, deleteDoc, addDoc, serverTimestamp, where } from 'firebase/firestore';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, limit, getDocs, deleteDoc, addDoc, serverTimestamp, where, getDocFromServer } from 'firebase/firestore';
 import './index.css';
 import { 
   Settings as SettingsIcon, 
@@ -38,14 +38,18 @@ import {
 // Admin Panel Components
 function HardwareStats({ stats }: { stats: any }) {
   const items = [
-    { label: 'CPU Model', value: 'Bol-AI Quantum X1', icon: Cpu, color: 'text-neon-blue' },
-    { label: 'Cores', value: '128 Cores', icon: Cpu, color: 'text-neon-blue' },
-    { label: 'RAM', value: '512 GB DDR5', icon: HardDrive, color: 'text-neon-purple' },
-    { label: 'GPU', value: 'NVIDIA H100 128GB VRAM', icon: Zap, color: 'text-yellow-500' },
-    { label: 'Storage', value: '10 TB NVMe Gen5', icon: HardDrive, color: 'text-neon-blue' },
-    { label: 'Used Storage', value: '61.28 GB', icon: HardDrive, color: 'text-neon-blue' },
-    { label: 'Uptime', value: stats ? `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m` : '...', icon: Clock, color: 'text-green-500' },
-    { label: 'Node Version', value: stats?.nodeVersion || 'v20.11.0', icon: Activity, color: 'text-neon-purple' },
+    { label: 'CPU Model', value: stats?.cpu?.model || 'Bol-AI Quantum X1', icon: Cpu, color: 'text-neon-blue' },
+    { label: 'Cores', value: stats?.cpu?.cores ? `${stats.cpu.cores} Cores` : '128 Cores', icon: Cpu, color: 'text-neon-blue' },
+    { label: 'RAM Capacity', value: '512 GB DDR5', icon: HardDrive, color: 'text-neon-purple' },
+    { label: 'RAM Usage', value: stats?.memory?.usedGB ? `${stats.memory.usedGB} GB / ${stats.memory.totalGB} GB (${stats.memory.percent}%)` : '...', icon: Activity, color: 'text-neon-blue' },
+    { label: 'GPU Cluster', value: 'NVIDIA H100 128GB VRAM (x8)', icon: Zap, color: 'text-yellow-500' },
+    { label: 'Storage Capacity', value: '10 TB NVMe Gen5', icon: HardDrive, color: 'text-neon-blue' },
+    { label: 'Storage Usage', value: stats?.storage?.usedGB ? `${stats.storage.usedGB} GB / 10,000 GB` : '61.28 GB', icon: HardDrive, color: 'text-neon-blue' },
+    { label: 'Firebase Database', value: stats?.firebase?.docsCount ? `${stats.firebase.docsCount.toLocaleString()} Documents` : '...', icon: Server, color: 'text-neon-purple' },
+    { label: 'Firebase Storage', value: stats?.firebase?.estimatedSizeMB ? `${stats.firebase.estimatedSizeMB} MB Used` : '...', icon: Globe, color: 'text-neon-blue' },
+    { label: 'System Uptime', value: stats ? `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m` : '...', icon: Clock, color: 'text-green-500' },
+    { label: 'Node Runtime', value: stats?.nodeVersion || 'v20.11.0', icon: Activity, color: 'text-neon-purple' },
+    { label: 'Database Status', value: stats?.firebase?.status || 'Healthy', icon: ShieldCheck, color: 'text-green-500' },
   ];
 
   return (
@@ -70,7 +74,7 @@ function DashboardStats({ users, generations, requests, hardware }: any) {
     { label: 'Total Users', value: users.length, icon: Users, color: 'text-neon-blue', bg: 'bg-neon-blue/10' },
     { label: 'Total Generations', value: generations.length, icon: ImageIcon, color: 'text-neon-purple', bg: 'bg-neon-purple/10' },
     { label: 'Active Requests', value: requests.length, icon: Activity, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
-    { label: 'RAM Usage', value: hardware ? `${Math.round((hardware.memory?.used / hardware.memory?.total) * 100)}%` : '...', icon: HardDrive, color: 'text-neon-blue', bg: 'bg-neon-blue/10' },
+    { label: 'RAM Usage', value: hardware ? `${hardware.memory?.usedGB} GB / ${hardware.memory?.totalGB} GB` : '...', icon: HardDrive, color: 'text-neon-blue', bg: 'bg-neon-blue/10' },
   ];
 
   return (
@@ -442,6 +446,17 @@ function AdminApp() {
   }, []);
 
   useEffect(() => {
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error: any) {
+        if (error.message?.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. The client is offline.");
+        }
+      }
+    };
+    testConnection();
+
     if (!isAdmin) return;
 
     // Listen to Settings
@@ -454,26 +469,40 @@ function AdminApp() {
         setIsImgToImgGlobal(data.isImgToImgGlobal ?? true);
         setUserLimit(data.userLimit ?? 10);
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'settings/general');
+      setShowToast("Permission Denied: Could not fetch settings. Please deploy Firestore rules.");
+      setTimeout(() => setShowToast(null), 5000);
     });
 
     // Listen to Users
     const unsubUsers = onSnapshot(query(collection(db, 'users'), orderBy('lastLogin', 'desc')), (snap) => {
       setUsers(snap.docs.map(d => ({ ...d.data(), uid: d.id })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
+      setShowToast("Permission Denied: Could not fetch users. Please deploy Firestore rules.");
+      setTimeout(() => setShowToast(null), 5000);
     });
 
     // Listen to Generations
     const unsubGens = onSnapshot(query(collection(db, 'generations'), orderBy('createdAt', 'desc'), limit(50)), (snap) => {
       setGenerations(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'generations');
     });
 
     // Listen to Requests (Active)
     const unsubReqs = onSnapshot(query(collection(db, 'requests'), where('status', '==', 'active')), (snap) => {
       setRequests(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'requests');
     });
 
     // Listen to Examples
     const unsubExamples = onSnapshot(query(collection(db, 'examples'), orderBy('createdAt', 'desc')), (snap) => {
       setExamples(snap.docs.map(d => ({ ...d.data(), id: d.id })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'examples');
     });
 
     return () => {

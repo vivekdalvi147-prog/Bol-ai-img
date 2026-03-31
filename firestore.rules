@@ -17,7 +17,7 @@ service cloud.firestore {
     function isAdmin() {
       return isAuthenticated() && 
         (request.auth.uid == '2cwK3E4SSvezZRop3VE14lbfJdc2' ||
-         request.auth.token.email == 'vivekdalvi147@gmail.com' ||
+         (request.auth.token.email == 'vivekdalvi147@gmail.com' && request.auth.token.email_verified == true) ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
@@ -64,7 +64,7 @@ service cloud.firestore {
 
     function isValidRequest(data) {
       return hasRequiredFields(['userId', 'prompt', 'status', 'createdAt']) &&
-             hasOnlyAllowedFields(['userId', 'userEmail', 'userIp', 'prompt', 'enhancedPrompt', 'referenceImageUrl', 'status', 'createdAt', 'imageUrl', 'error', 'completedAt', 'durationMs']) &&
+             hasOnlyAllowedFields(['userId', 'userEmail', 'userIp', 'prompt', 'enhancedPrompt', 'referenceImageUrl', 'status', 'createdAt', 'imageUrl', 'error', 'completedAt', 'durationMs', 'size', 'isEnhanced']) &&
              data.userId is string && data.userId.size() <= 128 &&
              isValidOptionalString('userEmail', 0, 255) &&
              isValidOptionalString('userIp', 0, 45) &&
@@ -75,18 +75,22 @@ service cloud.firestore {
              isRecent(data.createdAt) &&
              isValidOptionalString('imageUrl', 0, 2000) &&
              isValidOptionalString('error', 0, 1000) &&
-             isValidNumber('durationMs', 0, 3600000);
+             isValidNumber('durationMs', 0, 3600000) &&
+             isValidOptionalString('size', 0, 50) &&
+             (!('isEnhanced' in data) || data.isEnhanced is bool);
     }
 
     function isValidGeneration(data) {
       return hasRequiredFields(['userId', 'prompt', 'imageUrl', 'createdAt']) &&
-             hasOnlyAllowedFields(['userId', 'prompt', 'imageUrl', 'referenceImageUrl', 'size', 'createdAt']) &&
+             hasOnlyAllowedFields(['userId', 'prompt', 'imageUrl', 'referenceImageUrl', 'size', 'createdAt', 'isEnhanced', 'originalPrompt']) &&
              data.userId is string && data.userId.size() <= 128 &&
              isValidString('prompt', 1, 10000) &&
              isValidString('imageUrl', 1, 2000) &&
              isValidOptionalString('referenceImageUrl', 0, 2000) &&
              isValidOptionalString('size', 0, 50) &&
-             isRecent(data.createdAt);
+             isRecent(data.createdAt) &&
+             (!('isEnhanced' in data) || data.isEnhanced is bool) &&
+             isValidOptionalString('originalPrompt', 0, 5000);
     }
 
     function isValidUser(data) {
@@ -106,18 +110,23 @@ service cloud.firestore {
     // ===============================================================
 
     match /requests/{requestId} {
-      // Anyone can create a request (even anonymous users, to track free generations)
-      // But we validate the data strictly
+      // Anyone can create a request
       allow create: if isValidRequest(request.resource.data) && 
                       (request.resource.data.userId == 'anonymous' || isAuthenticated());
       
-      // Only admin or the creator can read/update their own request
-      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.userId) || resource.data.userId == 'anonymous';
+      // Allow reading if:
+      // 1. Admin
+      // 2. Owner
+      // 3. Anonymous owner
+      // 4. The request is ACTIVE (allows the background worker to find it)
+      allow read: if isAdmin() || 
+                    (isAuthenticated() && request.auth.uid == resource.data.userId) || 
+                    resource.data.userId == 'anonymous' ||
+                    resource.data.status == 'active';
       
       allow update: if isValidRequest(request.resource.data) && 
                       (isAdmin() || (isAuthenticated() && request.auth.uid == resource.data.userId) || resource.data.userId == 'anonymous');
       
-      // Only admin can delete requests
       allow delete: if isAdmin();
     }
 
