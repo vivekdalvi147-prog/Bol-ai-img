@@ -26,15 +26,55 @@ import {
   Search,
   RefreshCw,
   Clock,
-  CheckCircle2
+  CheckCircle2,
+  Cpu,
+  HardDrive,
+  Server,
+  Globe,
+  Mail,
+  Zap
 } from 'lucide-react';
 
 // Admin Panel Components
-function DashboardStats({ users, generations, requests }: any) {
+function HardwareStats({ stats }: { stats: any }) {
+  if (!stats) return (
+    <div className="glass p-8 rounded-[2rem] border border-white/10 flex items-center justify-center">
+      <Loader2 className="w-8 h-8 text-neon-blue animate-spin" />
+    </div>
+  );
+
+  const items = [
+    { label: 'CPU Model', value: stats.cpu?.model || 'Unknown', icon: Cpu, color: 'text-neon-blue' },
+    { label: 'Cores', value: stats.cpu?.cores || '0', icon: Cpu, color: 'text-neon-blue' },
+    { label: 'Memory Usage', value: `${Math.round(stats.memory?.used / 1024 / 1024)}MB / ${Math.round(stats.memory?.total / 1024 / 1024)}MB`, icon: HardDrive, color: 'text-neon-purple' },
+    { label: 'Platform', value: stats.platform || 'Unknown', icon: Server, color: 'text-neon-blue' },
+    { label: 'Uptime', value: `${Math.floor(stats.uptime / 3600)}h ${Math.floor((stats.uptime % 3600) / 60)}m`, icon: Clock, color: 'text-green-500' },
+    { label: 'Node Version', value: stats.nodeVersion || 'Unknown', icon: Activity, color: 'text-neon-purple' },
+  ];
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {items.map((item) => (
+        <div key={item.label} className="glass p-6 rounded-3xl border border-white/10 flex items-center gap-4">
+          <div className="w-12 h-12 bg-white/5 rounded-2xl flex items-center justify-center border border-white/5">
+            <item.icon className={`w-6 h-6 ${item.color}`} />
+          </div>
+          <div>
+            <p className="text-white/40 text-[10px] uppercase tracking-widest font-bold">{item.label}</p>
+            <p className="text-sm font-bold text-white truncate max-w-[200px]">{item.value}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function DashboardStats({ users, generations, requests, hardware }: any) {
   const stats = [
     { label: 'Total Users', value: users.length, icon: Users, color: 'text-neon-blue', bg: 'bg-neon-blue/10' },
     { label: 'Total Generations', value: generations.length, icon: ImageIcon, color: 'text-neon-purple', bg: 'bg-neon-purple/10' },
     { label: 'Active Requests', value: requests.length, icon: Activity, color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+    { label: 'RAM Usage', value: hardware ? `${Math.round((hardware.memory?.used / hardware.memory?.total) * 100)}%` : '...', icon: HardDrive, color: 'text-neon-blue', bg: 'bg-neon-blue/10' },
   ];
 
   return (
@@ -368,8 +408,24 @@ function AdminApp() {
   const [generations, setGenerations] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [examples, setExamples] = useState<any[]>([]);
+  const [hardware, setHardware] = useState<any>(null);
   
   const [showToast, setShowToast] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchHardware = async () => {
+      try {
+        const res = await fetch('/api/hardware');
+        const data = await res.json();
+        setHardware(data);
+      } catch (e) {
+        console.error("Failed to fetch hardware stats", e);
+      }
+    };
+    fetchHardware();
+    const interval = setInterval(fetchHardware, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -482,6 +538,18 @@ function AdminApp() {
     }
   };
 
+  const handleDeleteRequest = async (id: string) => {
+    if (!confirm("Force delete this active request?")) return;
+    try {
+      await deleteDoc(doc(db, 'requests', id));
+      setShowToast("Request deleted.");
+      setTimeout(() => setShowToast(null), 3000);
+    } catch (e) {
+      setShowToast("Failed to delete request.");
+      setTimeout(() => setShowToast(null), 3000);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
@@ -529,6 +597,7 @@ function AdminApp() {
               { id: 'users', label: 'Users', icon: Users },
               { id: 'gallery', label: 'Gallery', icon: ImageIcon },
               { id: 'examples', label: 'Examples', icon: Sparkles },
+              { id: 'hardware', label: 'Hardware', icon: Server },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -563,6 +632,7 @@ function AdminApp() {
           { id: 'users', icon: Users },
           { id: 'gallery', icon: ImageIcon },
           { id: 'examples', icon: Sparkles },
+          { id: 'hardware', icon: Server },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -589,7 +659,7 @@ function AdminApp() {
                   <p className="text-neon-blue font-bold tracking-widest uppercase text-[10px] mt-1">Real-time System Overview</p>
                 </div>
               </div>
-              <DashboardStats users={users} generations={generations} requests={requests} />
+              <DashboardStats users={users} generations={generations} requests={requests} hardware={hardware} />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="glass p-8 rounded-[2rem] border border-white/10">
                   <div className="flex items-center justify-between mb-8">
@@ -628,13 +698,47 @@ function AdminApp() {
                       </div>
                     ) : (
                       requests.map((req) => (
-                        <div key={req.id} className="flex items-center gap-4 p-4 rounded-2xl bg-white/5 border border-white/5">
-                          <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
-                            <Loader2 className="w-5 h-5 text-yellow-500 animate-spin" />
+                        <div key={req.id} className="p-4 rounded-2xl bg-white/5 border border-white/5 space-y-4">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 rounded-xl bg-yellow-500/10 flex items-center justify-center border border-yellow-500/20">
+                              <Loader2 className="w-5 h-5 text-yellow-500 animate-spin" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-bold text-white truncate">{req.prompt}</p>
+                              <div className="flex items-center gap-3 mt-1">
+                                <span className="flex items-center gap-1 text-[8px] text-white/40 uppercase tracking-widest">
+                                  <Mail className="w-2 h-2" /> {req.userEmail || 'Unknown'}
+                                </span>
+                                <span className="flex items-center gap-1 text-[8px] text-white/40 uppercase tracking-widest">
+                                  <Globe className="w-2 h-2" /> {req.userIp || 'Unknown'}
+                                </span>
+                              </div>
+                            </div>
+                            <button 
+                              onClick={() => handleDeleteRequest(req.id)}
+                              className="p-2 bg-red-500/10 text-red-500 rounded-lg border border-red-500/30 hover:bg-red-500 hover:text-white transition-all"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-bold text-white truncate">{req.prompt}</p>
-                            <p className="text-[10px] text-white/40 uppercase tracking-widest mt-1">UID: {req.userId?.slice(0, 8)}...</p>
+                          
+                          {req.enhancedPrompt && (
+                            <div className="p-3 rounded-xl bg-neon-blue/5 border border-neon-blue/10">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Sparkles className="w-3 h-3 text-neon-blue" />
+                                <span className="text-[8px] font-bold text-neon-blue uppercase tracking-widest">Enhanced Prompt</span>
+                              </div>
+                              <p className="text-[10px] text-white/60 italic leading-relaxed">{req.enhancedPrompt}</p>
+                            </div>
+                          )}
+
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-widest ${req.isEnhance ? 'bg-neon-blue/20 text-neon-blue border border-neon-blue/30' : 'bg-white/5 text-white/40 border border-white/10'}`}>
+                              {req.isEnhance ? 'Bol-AI Enhanced' : 'Standard'}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-white/5 text-white/40 border border-white/10 text-[8px] font-bold uppercase tracking-widest">
+                              {req.type || 'txt2img'}
+                            </span>
                           </div>
                         </div>
                       ))
@@ -709,6 +813,21 @@ function AdminApp() {
                 </div>
               </div>
               <ExamplesManagement examples={examples} onAdd={handleAddExample} onDelete={handleDeleteExample} />
+            </motion.div>
+          )}
+
+          {activeTab === 'hardware' && (
+            <motion.div key="hardware" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}>
+              <div className="flex items-center gap-4 mb-12">
+                <div className="w-16 h-16 bg-neon-blue/20 rounded-2xl flex items-center justify-center border border-neon-blue/30 shadow-[0_0_30px_rgba(0,255,255,0.2)]">
+                  <Server className="w-8 h-8 text-neon-blue" />
+                </div>
+                <div>
+                  <h2 className="text-4xl font-display font-bold text-white">Hardware Monitor</h2>
+                  <p className="text-neon-blue font-bold tracking-widest uppercase text-[10px] mt-1">Infrastructure Health</p>
+                </div>
+              </div>
+              <HardwareStats stats={hardware} />
             </motion.div>
           )}
         </AnimatePresence>

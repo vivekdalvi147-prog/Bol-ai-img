@@ -3,9 +3,32 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { GoogleGenAI } from "@google/genai";
 import fetch from "node-fetch";
+import os from "os";
+import { initializeApp } from "firebase/app";
+import { 
+  getFirestore, 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  doc, 
+  updateDoc, 
+  addDoc, 
+  serverTimestamp, 
+  increment, 
+  getDoc,
+  orderBy,
+  limit
+} from "firebase/firestore";
+import fs from "fs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load Firebase Config
+const firebaseConfig = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'firebase-applet-config.json'), 'utf8'));
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 const app = express();
 app.set('trust proxy', true);
@@ -42,8 +65,252 @@ const rateLimiter = (req: express.Request, res: express.Response, next: express.
   next();
 };
 
+// Background Request Worker
+const activeTasks = new Set<string>();
+
+async function processRequest(requestId: string, requestData: any) {
+  if (activeTasks.has(requestId)) return;
+  activeTasks.add(requestId);
+  
+  console.log(`[Worker] Processing request ${requestId} for user ${requestData.userEmail || 'anonymous'}`);
+  
+  const startTime = Date.now();
+  const TIMEOUT_MS = 180000; // 3 minutes
+  
+  try {
+    const { prompt, size, imageUrl: refImageUrl, userId, userEmail, isEnhanced, enhancedPrompt: existingEnhancedPrompt } = requestData;
+    let finalPrompt = existingEnhancedPrompt || prompt;
+
+    // 0. Enhance Prompt if requested but not yet enhanced
+    if (isEnhanced && !existingEnhancedPrompt) {
+      console.log(`[Worker] Enhancing prompt for ${requestId}...`);
+      try {
+        const apiKey = process.env.BOL_AI_API_KEY || process.env.TXT_MODEL_VIVEK_BOL_AI;
+        if (apiKey) {
+          const ai = new GoogleGenAI({ apiKey });
+          const upgradeInstruction = `You are BOL-AI, the world's most advanced image prompt engineer. Transform this basic idea into a legendary, hyper-detailed, and visually breathtaking image generation prompt. Return ONLY the upgraded prompt text. No chatter.
+          
+          USER INPUT: "${prompt}"
+          MODE: ${refImageUrl ? 'IMAGE EDIT (IMG-TO-IMG)' : 'NEW GENERATION'}`;
+
+          const contents: any[] = [{ text: upgradeInstruction }];
+          if (refImageUrl && refImageUrl.startsWith('http')) {
+            const imgRes = await fetch(refImageUrl);
+            if (imgRes.ok) {
+              const buffer = await imgRes.arrayBuffer();
+              const base64 = Buffer.from(buffer).toString('base64');
+              contents.push({ inlineData: { data: base64, mimeType: imgRes.headers.get('content-type') || 'image/png' } });
+            }
+          }
+
+          const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: { parts: contents }
+          });
+          finalPrompt = response.text;
+          
+          // Update request with enhanced prompt
+          await updateDoc(doc(db, 'requests', requestId), {
+            enhancedPrompt: finalPrompt
+          });
+        }
+      } catch (e) {
+        console.warn("[Worker] Prompt enhancement failed, using original", e);
+      }
+    }
+    
+    // 1. Start Generation
+    const apiKey = process.env.VIVEK_AI_BOL_IMG;
+    if (!apiKey) throw new Error("VIVEK_AI_BOL_IMG API Key missing");
+
+    const baseUrl = 'https://api-inference.modelscope.ai/';
+    const model = refImageUrl ? "MusePublic/Qwen-Image-Edit" : "Tongyi-MAI/Z-Image-Turbo";
+    const [width, height] = (size || "1024*1024").split('*').map(Number);
+
+    let requestBody: any;
+    if (refImageUrl) {
+      requestBody = {
+        model: "MusePublic/Qwen-Image-Edit",
+        input: { prompt: finalPrompt.substring(0, 500), image_url: refImageUrl },
+        parameters: { n: 1, size: size.replace('x', '*'), width, height }
+      };
+    } else {
+      requestBody = {
+        model: model,
+        input: { prompt: finalPrompt.substring(0, 1800) },
+        parameters: { n: 1, size: size.replace('x', '*'), width, height }
+      };
+    }
+
+    const startRes = await fetch(`${baseUrl}v1/images/generations`, {
+      method: 'POST',
+      headers: { 
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "X-ModelScope-Async-Mode": "true" 
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!startRes.ok) {
+      const errText = await startRes.text();
+      throw new Error(`ModelScope Start Error: ${errText}`);
+    }
+
+    const startData = await startRes.json() as any;
+    const taskId = startData.task_id || startData.id;
+
+    if (!taskId) {
+      // Check if it returned a direct URL (sync mode)
+      const directUrl = startData.output?.url || startData.data?.[0]?.url || startData.url;
+      if (directUrl) {
+        await finalizeRequest(requestId, requestData, directUrl, startTime);
+        return;
+      }
+      throw new Error("No task_id returned");
+    }
+
+    // 2. Polling
+    let isComplete = false;
+    let attempts = 0;
+    
+    while (!isComplete && (Date.now() - startTime) < TIMEOUT_MS) {
+      await new Promise(r => setTimeout(r, 3000));
+      attempts++;
+
+      const statusRes = await fetch(`${baseUrl}v1/tasks/${taskId}`, {
+        method: 'GET',
+        headers: { "Authorization": `Bearer ${apiKey}`, "X-ModelScope-Task-Type": "image_generation" }
+      });
+
+      if (!statusRes.ok) continue;
+      const statusData = await statusRes.json() as any;
+      
+      const isSucceeded = statusData.task_status === "SUCCEED" || statusData.status === "SUCCEED" || statusData.task_status === "SUCCESS" || statusData.status === "SUCCESS";
+      const isFailed = statusData.task_status === "FAILED" || statusData.status === "FAILED" || statusData.task_status === "ERROR" || statusData.status === "ERROR";
+
+      if (isFailed) throw new Error(`Generation failed: ${statusData.message || 'Unknown error'}`);
+      
+      if (isSucceeded) {
+        const finalUrl = statusData.output_images?.[0] || statusData.output?.url || statusData.data?.[0]?.url || statusData.url;
+        if (finalUrl) {
+          await finalizeRequest(requestId, requestData, finalUrl, startTime);
+          isComplete = true;
+        }
+      }
+    }
+
+    if (!isComplete) {
+      throw new Error("Generation Timeout (3m)");
+    }
+
+  } catch (error: any) {
+    console.error(`[Worker] Error processing ${requestId}:`, error.message);
+    await updateDoc(doc(db, 'requests', requestId), {
+      status: 'error',
+      error: error.message,
+      durationMs: Date.now() - startTime
+    });
+  } finally {
+    activeTasks.delete(requestId);
+  }
+}
+
+async function finalizeRequest(requestId: string, requestData: any, rawUrl: string, startTime: number) {
+  let finalUrl = rawUrl;
+  
+  // 1. Upload to ImgBB
+  try {
+    const imgbbKey = process.env.IMG_VIVEKAPP_AI;
+    if (imgbbKey) {
+      const imgRes = await fetch(rawUrl);
+      const buffer = await imgRes.arrayBuffer();
+      const base64 = Buffer.from(buffer).toString('base64');
+      
+      const params = new URLSearchParams();
+      params.append("image", base64);
+      
+      const uploadRes = await fetch(`https://api.imgbb.com/1/upload?key=${imgbbKey}`, {
+        method: 'POST',
+        body: params
+      });
+      const uploadData = await uploadRes.json() as any;
+      if (uploadData.success) {
+        finalUrl = uploadData.data.url;
+      }
+    }
+  } catch (e) {
+    console.warn("[Worker] ImgBB upload failed, using raw URL", e);
+  }
+
+  // 2. Update Request
+  const durationMs = Date.now() - startTime;
+  await updateDoc(doc(db, 'requests', requestId), {
+    status: 'completed',
+    imageUrl: finalUrl,
+    durationMs
+  });
+
+  // 3. Save to Generations
+  const genData = {
+    userId: requestData.userId || 'anonymous',
+    prompt: requestData.isEnhanced ? requestData.enhancedPrompt : requestData.prompt,
+    imageUrl: finalUrl,
+    size: requestData.size || "1024*1024",
+    createdAt: serverTimestamp(),
+    isEnhanced: requestData.isEnhanced || false,
+    originalPrompt: requestData.prompt
+  };
+  await addDoc(collection(db, 'generations'), genData);
+
+  // 4. Update User Count
+  if (requestData.userId && requestData.userId !== 'anonymous') {
+    const userRef = doc(db, 'users', requestData.userId);
+    const today = new Date().toISOString().split('T')[0];
+    const userDoc = await getDoc(userRef);
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      if (userData.lastGenerationDate !== today) {
+        await updateDoc(userRef, { generationsCount: 1, lastGenerationDate: today });
+      } else {
+        await updateDoc(userRef, { generationsCount: increment(1) });
+      }
+    }
+  }
+  
+  console.log(`[Worker] Request ${requestId} completed in ${durationMs}ms`);
+}
+
+// Start listening for requests
+onSnapshot(query(collection(db, 'requests'), where('status', '==', 'active')), (snap) => {
+  snap.docs.forEach(d => {
+    processRequest(d.id, d.data());
+  });
+});
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok" });
+});
+
+// API Route for Hardware Stats
+app.get("/api/hardware", (req, res) => {
+  const stats = {
+    cpu: {
+      model: os.cpus()[0].model,
+      cores: os.cpus().length,
+      load: os.loadavg(),
+    },
+    memory: {
+      total: os.totalmem(),
+      free: os.freemem(),
+      used: os.totalmem() - os.freemem(),
+      percent: ((os.totalmem() - os.freemem()) / os.totalmem() * 100).toFixed(2)
+    },
+    uptime: os.uptime(),
+    platform: os.platform(),
+    nodeVersion: process.version
+  };
+  res.json(stats);
 });
 
 // Utility function for fetch with retries
@@ -51,26 +318,17 @@ async function fetchWithRetry(url: string, options: any, retries = 5, delay = 30
   for (let i = 0; i < retries; i++) {
     try {
       const response = await fetch(url, options);
-      // Retry on 5xx server errors or 429 Too Many Requests
       if (response.status >= 500 || response.status === 429) {
         throw new Error(`Server Error: ${response.status}`);
       }
       return response;
     } catch (error: any) {
       if (i === retries - 1) throw error;
-      
-      // Handle connection refused specifically
-      if (error.code === 'ECONNREFUSED' || error.message.includes('connection refused')) {
-        console.warn(`Connection refused (attempt ${i + 1}/${retries}). The Bol-AI server might be down. Retrying in ${delay * 2}ms...`);
-        await new Promise(res => setTimeout(res, delay * 2));
-        continue;
-      }
-
       console.warn(`Fetch failed (attempt ${i + 1}/${retries}): ${error.message}. Retrying in ${delay}ms...`);
       await new Promise(res => setTimeout(res, delay));
     }
   }
-  throw new Error("Bol-AI Server is currently unreachable. Please try again in a few minutes.");
+  throw new Error("Bol-AI Server is currently unreachable.");
 }
 
 // API Route to Upload to ImgBB
@@ -80,7 +338,7 @@ app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
     const apiKey = process.env.IMG_VIVEKAPP_AI;
     
     if (!apiKey) {
-      return res.status(400).json({ error: "ImgBB API Key missing (IMG_VIVEKAPP_AI). Please add it in AI Studio Secrets." });
+      return res.status(400).json({ error: "ImgBB API Key missing" });
     }
 
     let imagePayload = imageUrl;
@@ -99,19 +357,18 @@ app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
     const data = await response.json();
     res.json(data);
   } catch (error: any) {
-    console.error("ImgBB Upload Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// API Route to Enhance Prompt (using Bol-AI Engine)
+// API Route to Enhance Prompt
 app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
   try {
     const { prompt, isEdit, image_url } = req.body;
     const apiKey = process.env.BOL_AI_API_KEY || process.env.TXT_MODEL_VIVEK_BOL_AI;
 
     if (!apiKey) {
-      return res.status(400).json({ error: "API Key missing (BOL_AI_API_KEY). Please add it in AI Studio Secrets." });
+      return res.status(400).json({ error: "API Key missing" });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -121,8 +378,8 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
 CORE DIRECTIVES:
 1. TRANSLATE & EXPAND: If the input is in Hindi, Hinglish, or any other language, translate it to English and expand it significantly.
 2. MODE AWARENESS:
-   - IF THIS IS A NEW GENERATION: Structure the prompt with SUBJECT, ENVIRONMENT, STYLE, LIGHTING, and CAMERA. Use high-impact terms like 'hyper-realistic', '8k resolution', 'unreal engine 5 style'.
-   - IF THIS IS AN IMAGE EDIT (IMG-TO-IMG): Focus on the CHANGES or ENHANCEMENTS to be made to the reference image. Describe the desired modifications in detail while maintaining the context of the original image.
+   - IF THIS IS A NEW GENERATION: Structure the prompt with SUBJECT, ENVIRONMENT, STYLE, LIGHTING, and CAMERA.
+   - IF THIS IS AN IMAGE EDIT: Focus on the CHANGES or ENHANCEMENTS.
 3. LENGTH CONSTRAINT: Your output MUST be under 1500 characters.
 4. PURE OUTPUT: Return ONLY the upgraded prompt text. No chatter.
 
@@ -132,7 +389,6 @@ MODE: ${isEdit ? 'IMAGE EDIT (IMG-TO-IMG)' : 'NEW GENERATION'}`;
 
     const contents: any[] = [{ text: upgradeInstruction }];
     
-    // If image_url is provided, send it to Gemma for better enhancement
     if (image_url && image_url.startsWith('http')) {
       try {
         const imgRes = await fetch(image_url);
@@ -140,17 +396,9 @@ MODE: ${isEdit ? 'IMAGE EDIT (IMG-TO-IMG)' : 'NEW GENERATION'}`;
           const buffer = await imgRes.arrayBuffer();
           const base64 = Buffer.from(buffer).toString('base64');
           const mimeType = imgRes.headers.get('content-type') || 'image/png';
-          contents.push({
-            inlineData: {
-              data: base64,
-              mimeType: mimeType
-            }
-          });
-          console.log("Image sent to Gemma for enhancement.");
+          contents.push({ inlineData: { data: base64, mimeType: mimeType } });
         }
-      } catch (e) {
-        console.warn("Failed to fetch image for Gemma enhancement:", e);
-      }
+      } catch (e) {}
     }
 
     const response = await ai.models.generateContent({
@@ -160,7 +408,6 @@ MODE: ${isEdit ? 'IMAGE EDIT (IMG-TO-IMG)' : 'NEW GENERATION'}`;
 
     res.json({ enhancedPrompt: response.text });
   } catch (error: any) {
-    console.error("Enhance Prompt Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -169,22 +416,10 @@ MODE: ${isEdit ? 'IMAGE EDIT (IMG-TO-IMG)' : 'NEW GENERATION'}`;
 app.get("/api/download", async (req, res) => {
   try {
     const { url } = req.query;
-    if (!url || typeof url !== 'string') {
-      return res.status(400).send("URL is required");
-    }
+    if (!url || typeof url !== 'string') return res.status(400).send("URL is required");
 
-    let fetchUrl = url;
-    if (url.startsWith('/')) {
-      // It's a relative URL, construct absolute URL
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.headers.host;
-      fetchUrl = `${protocol}://${host}${url}`;
-    }
-
-    const response = await fetch(fetchUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.statusText}`);
-    }
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Failed to fetch image`);
 
     const contentType = response.headers.get('content-type') || 'image/png';
     const arrayBuffer = await response.arrayBuffer();
@@ -192,160 +427,15 @@ app.get("/api/download", async (req, res) => {
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Disposition', `attachment; filename="bol-ai-${Date.now()}.png"`);
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(buffer);
   } catch (error: any) {
-    console.error("Download Error:", error);
     res.status(500).send(error.message);
-  }
-});
-
-// API Route for Image Generation (Start Task)
-app.post("/api/generate", rateLimiter, async (req, res) => {
-  try {
-    const { prompt, size, image_url } = req.body;
-    let userPrompt = prompt || "A golden cat";
-    
-    // Strict truncation to avoid ModelScope 2000 character limit
-    if (userPrompt.length > 1800) {
-      userPrompt = userPrompt.substring(0, 1800);
-    }
-
-    const imageSize = size || "1024*1024";
-    const apiKey = process.env.VIVEK_AI_BOL_IMG;
-
-    if (!apiKey) {
-      return res.status(400).json({ error: "API Key missing (VIVEK_AI_BOL_IMG). Please add it in AI Studio Secrets." });
-    }
-
-    const baseUrl = 'https://api-inference.modelscope.ai/';
-    const commonHeaders = {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    };
-
-    // Determine model: If image_url is provided, use Qwen-Image-Edit, otherwise Z-Image-Turbo
-    const model = image_url ? "MusePublic/Qwen-Image-Edit" : "Tongyi-MAI/Z-Image-Turbo";
-    
-    // 1. Image Generation Task
-    const [width, height] = imageSize.split('*').map(Number);
-    
-    // Standard ModelScope request structure
-    let requestBody: any;
-
-    if (image_url) {
-      // Qwen-Image-Edit specific structure (Img-to-Img)
-      // Very strict prompt length for this model, usually 500-1000 chars
-      const editPrompt = userPrompt.length > 500 ? userPrompt.substring(0, 500) : userPrompt;
-      requestBody = {
-        model: "MusePublic/Qwen-Image-Edit",
-        input: {
-          prompt: editPrompt,
-          image_url: image_url
-        },
-        parameters: {
-          n: 1,
-          size: imageSize.replace('x', '*'),
-          width: width,
-          height: height
-        }
-      };
-    } else {
-      // Z-Image-Turbo specific structure (Txt-to-Img)
-      requestBody = {
-        model: model,
-        input: {
-          prompt: userPrompt
-        },
-        parameters: {
-          n: 1,
-          size: imageSize.replace('x', '*'),
-          width: width,
-          height: height
-        },
-        prompt: userPrompt // Some versions prefer top-level
-      };
-    }
-
-    console.log("ModelScope Request Body:", JSON.stringify(requestBody));
-    console.log(`Starting generation for model: ${model}, prompt: ${userPrompt.substring(0, 50)}...`);
-
-    const response = await fetchWithRetry(`${baseUrl}v1/images/generations`, {
-      method: 'POST',
-      headers: { ...commonHeaders, "X-ModelScope-Async-Mode": "true" },
-      body: JSON.stringify(requestBody)
-    }, 3, 2000);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("ModelScope API Error:", errorText);
-      const cleanError = errorText.replace(/ModelScope/gi, 'Bol-AI');
-      return res.status(response.status).json({ error: `Bol-AI Error: ${cleanError}` });
-    }
-
-    const initialData = await response.json() as any;
-    console.log("ModelScope Initial Response:", JSON.stringify(initialData));
-    
-    // Check for direct result (synchronous)
-    const directUrl = initialData.output?.url || initialData.data?.[0]?.url || initialData.url;
-    if (directUrl) {
-      return res.json({ task_id: 'sync', url: directUrl });
-    }
-
-    const taskId = initialData.task_id || initialData.id; // Some models might use 'id' instead of 'task_id'
-    
-    if (!taskId) {
-      return res.status(500).json({ error: "Failed to get task_id from Bol-AI. Response: " + JSON.stringify(initialData) });
-    }
-
-    res.json({ task_id: taskId });
-  } catch (error: any) {
-    console.error("Generation Error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// API Route to Check Task Status
-app.get("/api/tasks/:taskId", async (req, res) => {
-  try {
-    const { taskId } = req.params;
-    const apiKey = process.env.VIVEK_AI_BOL_IMG;
-
-    if (!apiKey) {
-      return res.status(400).json({ error: "API Key missing." });
-    }
-
-    const baseUrl = 'https://api-inference.modelscope.ai/';
-    const commonHeaders = {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    };
-
-    const resultResponse = await fetchWithRetry(`${baseUrl}v1/tasks/${taskId}`, {
-      method: 'GET',
-      headers: { ...commonHeaders, "X-ModelScope-Task-Type": "image_generation" },
-    }, 3, 1000);
-
-    if (!resultResponse.ok) {
-      const errorText = await resultResponse.text();
-      const cleanError = errorText.replace(/ModelScope/gi, 'Bol-AI');
-      return res.status(resultResponse.status).json({ error: `Bol-AI Error: ${cleanError}` });
-    }
-
-    const data = await resultResponse.json() as any;
-    console.log(`Task ${taskId} Status:`, JSON.stringify(data));
-    res.json(data);
-  } catch (error: any) {
-    console.error("Task Check Error:", error);
-    res.status(500).json({ error: error.message });
   }
 });
 
 async function startServer() {
   const PORT = Number(process.env.PORT) || 3000;
 
-  // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -356,15 +446,8 @@ async function startServer() {
   } else {
     const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
-    
-    // Clean route for admin panel
-    app.get('/admin', (req, res) => {
-      res.sendFile(path.join(distPath, 'admin.html'));
-    });
-
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
+    app.get('/admin', (req, res) => res.sendFile(path.join(distPath, 'admin.html')));
+    app.get('*', (req, res) => res.sendFile(path.join(distPath, 'index.html')));
   }
 
   app.listen(PORT, "0.0.0.0", () => {
@@ -372,7 +455,6 @@ async function startServer() {
   });
 }
 
-// Only start the server if we are not running on Vercel
 if (!process.env.VERCEL) {
   startServer();
 }

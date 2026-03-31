@@ -146,7 +146,20 @@ function AppContent() {
     return () => window.removeEventListener('click', handleClickOutside);
   }, []);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
-  const [userIp, setUserIp] = useState('unknown');
+  const [userIp, setUserIp] = useState<string>('unknown');
+
+  useEffect(() => {
+    const fetchIp = async () => {
+      try {
+        const res = await fetch('https://api.ipify.org?format=json');
+        const data = await res.json();
+        setUserIp(data.ip);
+      } catch (e) {
+        console.warn("Failed to fetch IP", e);
+      }
+    };
+    fetchIp();
+  }, []);
   const [isUiMode, setIsUiMode] = useState(() => localStorage.getItem('bol_ai_ui_mode') === 'true');
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [user, setUser] = useState<User | null>(null);
@@ -458,7 +471,7 @@ function AppContent() {
       return;
     }
 
-    console.log("Starting handleGenerate...");
+    console.log("Starting handleGenerate (Server-Side Flow)...");
     setIsEnhancing(false);
     setError(null);
     setGeneratedImage(null);
@@ -466,8 +479,6 @@ function AppContent() {
     setEnhancedPrompt(null);
     setIsPromptExpanded(false);
 
-    let finalPrompt = isUiMode ? `${UI_DESIGN_PROMPT_PREFIX}${prompt}` : prompt;
-    const originalUserPrompt = prompt;
     let currentRequestId: string | null = null;
     let finalReferenceImageUrl: string | null = null;
     const startTime = Date.now();
@@ -486,280 +497,67 @@ function AppContent() {
           const imgbbData = await imgbbRes.json();
           if (imgbbData.success) {
             finalReferenceImageUrl = imgbbData.data.url;
-            console.log("Reference image uploaded:", finalReferenceImageUrl);
           }
         } catch (e) {
           console.error("Reference Image ImgBB Upload Failed", e);
         }
       }
 
-      // Track request in Firestore
-      console.log("Tracking request in Firestore...");
-      let reqRef;
-      try {
-        reqRef = await addDoc(collection(db, 'requests'), {
-          userId: user ? user.uid : 'anonymous',
-          userEmail: user ? (user.email || user.providerData?.find(p => p.email)?.email || 'N/A') : 'anonymous',
-          userIp: userIp,
-          prompt: originalUserPrompt,
-          enhancedPrompt: isEnhanceEnabled ? null : originalUserPrompt, // Will be updated if enhanced
-          referenceImageUrl: finalReferenceImageUrl,
-          status: 'active',
-          createdAt: serverTimestamp()
-        });
-      } catch (e) {
-        handleFirestoreError(e, OperationType.CREATE, 'requests');
-      }
-      currentRequestId = reqRef.id;
-      console.log("Request tracked with ID:", currentRequestId);
-
-      if (isEnhanceEnabled && isEnhanceGlobal) {
-        console.log("Enhancing prompt...");
-        setIsEnhancing(true);
-        try {
-          // Step 1: Enhance Prompt using Bol-AI Engine (via proxy)
-          const enhanceRes = await fetch('/api/enhance-prompt', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-              prompt: finalPrompt,
-              isEdit: !!referenceImage,
-              image_url: finalReferenceImageUrl || referenceImage
-            }),
-          });
-
-          if (enhanceRes.ok) {
-            const enhanceData = await enhanceRes.json();
-            if (enhanceData.enhancedPrompt) {
-              finalPrompt = enhanceData.enhancedPrompt;
-              setEnhancedPrompt(finalPrompt);
-              console.log("Prompt enhanced:", finalPrompt);
-              // Update request with enhanced prompt
-              if (currentRequestId) {
-                try {
-                  await updateDoc(doc(db, 'requests', currentRequestId), {
-                    enhancedPrompt: finalPrompt
-                  });
-                } catch (e) {
-                  handleFirestoreError(e, OperationType.UPDATE, `requests/${currentRequestId}`);
-                }
-              }
-            }
-          } else {
-            console.warn("Prompt enhancement failed, using original prompt.");
-          }
-        } catch (err) {
-          console.warn("Prompt enhancement error:", err);
-        } finally {
-          setIsEnhancing(false);
-        }
-      }
-
-      // Step 2: Generate Image
-      console.log("Sending generation request to server...");
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          prompt: finalPrompt, 
-          size: selectedSize,
-          quality: quality,
-          image_url: finalReferenceImageUrl || referenceImage
-        }),
+      // Step 1: Create Request in Firestore
+      console.log("Creating request in Firestore...");
+      const reqRef = await addDoc(collection(db, 'requests'), {
+        userId: user ? user.uid : 'anonymous',
+        userEmail: user ? (user.email || user.providerData?.find(p => p.email)?.email || 'N/A') : 'anonymous',
+        userIp: userIp,
+        prompt: prompt,
+        size: selectedSize,
+        isEnhanced: isEnhanceEnabled && isEnhanceGlobal,
+        enhancedPrompt: null, // Server will update this if isEnhanced is true
+        referenceImageUrl: finalReferenceImageUrl,
+        status: 'active',
+        createdAt: serverTimestamp()
       });
+      currentRequestId = reqRef.id;
 
-      const text = await response.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        console.error("Raw response:", text);
-        throw new Error(`Server Error: ${text.substring(0, 50)}... Make sure the server is running.`);
-      }
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to start image generation');
-      }
+      // Step 2: Listen for completion
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          unsub();
+          reject(new Error("Generation Timeout (3m). The server is taking too long."));
+        }, 180000); // 3 minutes
 
-      const taskId = data.task_id;
-      if (!taskId) {
-        throw new Error('No task ID returned from server.');
-      }
-
-      // Handle synchronous result
-      if (taskId === 'sync' && data.url) {
-        console.log("Synchronous result received:", data.url);
-        const finalUrl = data.url;
-        setGeneratedImage(finalUrl);
-        setIsGenerating(false);
-        
-        // Update Firestore
-        if (currentRequestId) {
-          try {
-            await updateDoc(doc(db, 'requests', currentRequestId), {
-              status: 'completed',
-              imageUrl: finalUrl,
-              completedAt: serverTimestamp()
-            });
-          } catch (e) {
-            handleFirestoreError(e, OperationType.UPDATE, 'requests');
+        const unsub = onSnapshot(doc(db, 'requests', currentRequestId!), (docSnap) => {
+          if (!docSnap.exists()) return;
+          const data = docSnap.data();
+          
+          if (data.enhancedPrompt && !enhancedPrompt) {
+            setEnhancedPrompt(data.enhancedPrompt);
           }
-        }
-        return;
-      }
 
-      // Poll for status
-      let isComplete = false;
-      let attempts = 0;
-      const maxAttempts = 90; // 90 * 2s = 180 seconds (3 minutes)
-
-      while (!isComplete && attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        attempts++;
-
-        const statusRes = await fetch(`/api/tasks/${taskId}`);
-        if (!statusRes.ok) continue;
-
-        let statusData;
-        try {
-          statusData = await statusRes.json();
-        } catch (e) {
-          console.error("Failed to parse status response:", e);
-          continue;
-        }
-        
-        const isSucceeded = statusData.task_status === "SUCCEED" || statusData.status === "SUCCEED" || statusData.task_status === "SUCCESS" || statusData.status === "SUCCESS";
-        const isFailed = statusData.task_status === "FAILED" || statusData.status === "FAILED" || statusData.task_status === "ERROR" || statusData.status === "ERROR";
-
-        if (isFailed) {
-          throw new Error(`Generation failed: ${statusData.message || statusData.error || 'Unknown error'}`);
-        }
-        
-        if (isSucceeded) {
-          // Extract image URL from various possible locations
-          const finalImageUrl = statusData.output_images?.[0] || 
-                               statusData.output?.url || 
-                               statusData.data?.[0]?.url || 
-                               statusData.url;
-
-          if (finalImageUrl) {
-            const endTime = Date.now();
-            const durationMs = endTime - startTime;
-
-            // Upload to ImgBB
-            let finalDisplayUrl = finalImageUrl;
-            try {
-              const base64DataWithPrefix = await fetchAsBase64(finalImageUrl);
-              const base64Data = base64DataWithPrefix.split(',')[1]; // Strip prefix
-
-              const imgbbRes = await fetch('/api/upload-imgbb', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ imageUrl: base64Data })
-              });
-              const imgbbData = await imgbbRes.json();
-              if (imgbbData.success) {
-                finalDisplayUrl = imgbbData.data.url;
-              }
-            } catch (e) {
-              console.error("ImgBB Upload Failed", e);
-            }
-
-            // Update UI with the FINAL URL
-            setGeneratedImage(finalDisplayUrl);
+          if (data.status === 'completed') {
+            clearTimeout(timeout);
+            unsub();
+            setGeneratedImage(data.imageUrl);
             setGeneratedSize(selectedSize);
-            isComplete = true;
-
-            // Update User Generation Count
-            if (user && !isAdmin) {
-              try {
-                const userRef = doc(db, 'users', user.uid);
-                const today = new Date().toISOString().split('T')[0];
-                const userDoc = await getDoc(userRef);
-                const userData = userDoc.data();
-                
-                if (userData?.lastGenerationDate !== today) {
-                  try {
-                    await updateDoc(userRef, {
-                      generationsCount: 1,
-                      lastGenerationDate: today
-                    });
-                  } catch (e) {
-                    handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
-                  }
-                } else {
-                  try {
-                    await updateDoc(userRef, {
-                      generationsCount: increment(1)
-                    });
-                  } catch (e) {
-                    handleFirestoreError(e, OperationType.UPDATE, `users/${user.uid}`);
-                  }
-                }
-              } catch (e) {
-                console.error("Error updating user generation count:", e);
-              }
+            setIsGenerating(false);
+            
+            // Update local state for "My Creations" if user is logged in
+            if (user) {
+              // The server already added the document to 'generations', 
+              // so we just need to refresh or wait for the snapshot listener on 'generations'
             }
-
-            // Save to Firestore for ALL users (so admin can see it)
-            try {
-              const newGen = {
-                userId: user ? user.uid : 'anonymous',
-                // Removed userEmail and userIp for privacy in public gallery
-                prompt: finalPrompt,
-                imageUrl: finalDisplayUrl,
-                referenceImageUrl: finalReferenceImageUrl,
-                size: selectedSize,
-                createdAt: serverTimestamp()
-              };
-              const docRef = await addDoc(collection(db, 'generations'), newGen);
-              console.log("Image saved to Firestore successfully!");
-              setLastGeneratedId(docRef.id);
-              if (user) {
-                setMyImages(prev => [{ id: docRef.id, ...newGen }, ...prev]);
-              }
-            } catch (dbError) {
-              handleFirestoreError(dbError, OperationType.CREATE, 'generations');
-            }
-
-            if (!user) {
-              setGenerationsCount(prev => prev + 1);
-            }
-
-            // Update request status to completed
-            if (currentRequestId) {
-              await updateDoc(doc(db, 'requests', currentRequestId), {
-                status: 'completed',
-                imageUrl: finalDisplayUrl,
-                durationMs: durationMs
-              });
-            }
-          } else {
-            throw new Error("Bol-AI succeeded but returned no images.");
+            resolve(true);
+          } else if (data.status === 'error') {
+            clearTimeout(timeout);
+            unsub();
+            reject(new Error(data.error || "Generation failed on server."));
           }
-        } else if (statusData.task_status === "FAILED") {
-          throw new Error("Bol-AI failed to generate image.");
-        }
-      }
-
-      if (!isComplete) {
-        throw new Error("Generation Timeout (3m). Please try again.");
-      }
+        });
+      });
 
     } catch (err: any) {
       console.error("Generation Error:", err);
       setError(err.message || "An unexpected error occurred.");
-      
-      // Update request status to error
-      if (currentRequestId) {
-        const endTime = Date.now();
-        const durationMs = endTime - startTime;
-        updateDoc(doc(db, 'requests', currentRequestId), {
-          status: 'error',
-          error: err.message || "Unknown error",
-          durationMs: durationMs
-        }).catch(console.error);
-      }
     } finally {
       setIsGenerating(false);
       setIsEnhancing(false);
