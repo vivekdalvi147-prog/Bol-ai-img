@@ -91,7 +91,7 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
     const apiKey = process.env.BOL_AI_API_KEY || process.env.TXT_MODEL_VIVEK_BOL_AI || process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return res.status(400).json({ error: "API Key missing. Please add GEMINI_API_KEY in AI Studio Secrets." });
+      return res.status(400).json({ error: "API Key missing. Please add TXT_MODEL_VIVEK_BOL_AI or GEMINI_API_KEY in AI Studio Secrets." });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -108,7 +108,7 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
 
     let enhancedText = prompt;
     try {
-      // Try Gemma 2 27B IT as requested by user
+      // Re-enabling Gemma 2 27B IT as specifically requested by the user
       console.log("Attempting prompt enhancement with Gemma 2 27B IT...");
       const response = await ai.models.generateContent({
         model: "gemma-2-27b-it",
@@ -120,16 +120,23 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
         }
       });
       enhancedText = response.text || prompt;
-      console.log("Gemma enhancement successful.");
+      console.log("Gemma 2 27B IT enhancement successful.");
     } catch (gemmaError: any) {
-      console.warn("Gemma 27B failed, falling back to Gemini 3.1 Flash Lite:", gemmaError.message);
-      // Fallback to Gemini 3.1 Flash Lite
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: upgradeInstruction
-      });
-      enhancedText = response.text || prompt;
-      console.log("Gemini fallback enhancement successful.");
+      console.error("Gemma 2 27B IT Error:", gemmaError.message);
+      
+      // Fallback to Gemini 3.1 Flash Lite if Gemma fails
+      try {
+        console.log("Gemma failed, falling back to Gemini 3.1 Flash Lite for stability...");
+        const response = await ai.models.generateContent({
+          model: "gemini-3.1-flash-lite-preview",
+          contents: upgradeInstruction
+        });
+        enhancedText = response.text || prompt;
+        console.log("Gemini fallback enhancement successful.");
+      } catch (fallbackError: any) {
+        console.warn("Both models failed, using original prompt:", fallbackError.message);
+        enhancedText = prompt;
+      }
     }
 
     if (enhancedText.length > 2000) {
