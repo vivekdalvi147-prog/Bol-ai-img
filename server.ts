@@ -129,7 +129,7 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
     - Expand significantly with artistic details, lighting, and camera settings.
     - Use high-impact terms like 'hyper-realistic', '8k', 'unreal engine 5'.
     - Return ONLY the upgraded prompt text. No chatter.
-    - Max 2000 characters.`;
+    - Keep it concise but detailed (max 100 words).`;
 
     let enhancedText = prompt;
     try {
@@ -141,7 +141,7 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
           temperature: 0.7,
           topP: 0.95,
           topK: 40,
-          maxOutputTokens: 1024
+          maxOutputTokens: 250
         }
       });
       enhancedText = response.text || prompt;

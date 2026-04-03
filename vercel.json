@@ -29,10 +29,5 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "functions": {
-    "server.ts": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }
