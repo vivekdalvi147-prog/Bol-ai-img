@@ -332,7 +332,7 @@ export default function App() {
       }
 
       // Step 2: Generate Image
-      console.log("Sending generation request to server...");
+      console.log("[Bol-AI] Sending generation request to server...");
       const response = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -344,19 +344,20 @@ export default function App() {
       });
 
       const text = await response.text();
+      console.log(`[Bol-AI] Generate response status: ${response.status}`);
       let data;
       try {
         data = JSON.parse(text);
       } catch (e) {
-        console.error("Raw response:", text);
+        console.error("[Bol-AI] Raw response:", text);
         if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
-          throw new Error(`Bol-AI Server Error: The server returned an error page. This usually means a timeout or a crash on Vercel. Please try again in a few seconds.`);
+          throw new Error(`Bol-AI Server Error: The server returned an error page (Status ${response.status}). This usually means a timeout (504) or a crash on Vercel. Please check your API keys and try again.`);
         }
         throw new Error(`Server Error: ${text.substring(0, 100)}...`);
       }
       
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Failed to start image generation');
+        throw new Error(data.error || data.message || `Failed to start image generation (Status ${response.status})`);
       }
 
       const taskId = data.task_id;

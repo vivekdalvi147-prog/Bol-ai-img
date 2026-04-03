@@ -1,8 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-import fetch from 'node-fetch';
+import { GoogleGenAI } from "@google/genai";
 
 console.log(`[Bol-AI] Server initializing at ${new Date().toISOString()}`);
 
@@ -11,51 +10,58 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 app.set('trust proxy', true);
-app.use(express.json({ limit: '10mb' })); // Reduced limit for Vercel (max 4.5MB anyway)
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(express.json({ limit: '4mb' })); // Vercel limit is 4.5MB
+app.use(express.urlencoded({ limit: '4mb', extended: true }));
 
 // Environment Check for Debugging (Visible in Vercel Logs)
 console.log("--- Bol-AI Environment Check ---");
 console.log("VERCEL Environment:", !!process.env.VERCEL);
 console.log("NODE_ENV:", process.env.NODE_ENV);
 console.log("GEMINI_API_KEY:", process.env.GEMINI_API_KEY ? "SET" : "MISSING");
+console.log("MODELSCOPE_API_KEY:", process.env.MODELSCOPE_API_KEY ? "SET" : "MISSING");
 console.log("VIVEK_AI_BOL_IMG:", process.env.VIVEK_AI_BOL_IMG ? "SET" : "MISSING");
 console.log("IMG_VIVEKAPP_AI:", process.env.IMG_VIVEKAPP_AI ? "SET" : "MISSING");
-console.log("BOL_AI_API_KEY:", process.env.BOL_AI_API_KEY ? "SET" : "MISSING");
-console.log("TXT_MODEL_VIVEK_BOL_AI:", process.env.TXT_MODEL_VIVEK_BOL_AI ? "SET" : "MISSING");
 console.log("--------------------------------");
 
-// Simple rate limiter to prevent abuse
-const rateLimiter = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-  // Basic implementation, can be expanded if needed
-  next();
-};
-
-app.get("/api/health", (req, res) => {
-  res.json({ status: "ok" });
-});
-
-// Utility function for fetch with retries
-async function fetchWithRetry(url: string, options: any, retries = 3, delay = 1000) {
-  for (let i = 0; i < retries; i++) {
+// Utility function for fetch with retries and timeout
+async function fetchWithRetry(url: string, options: any, retries = 1, delay = 500) {
+  const timeout = 8000; // 8 seconds timeout to stay within Vercel's 10s limit
+  
+  for (let i = 0; i <= retries; i++) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    
     try {
-      const response = await (fetch as any)(url, options);
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal
+      });
+      clearTimeout(id);
+      
       if (response.status === 429 || response.status >= 500) {
-        const text = await response.text();
-        console.warn(`Fetch attempt ${i + 1} failed with status ${response.status}: ${text.substring(0, 100)}`);
-        if (i === retries - 1) return response;
-        await new Promise(res => setTimeout(res, delay * (i + 1))); // Exponential backoff
+        if (i === retries) return response;
+        await new Promise(res => setTimeout(res, delay * (i + 1)));
         continue;
       }
       return response;
     } catch (error: any) {
-      if (i === retries - 1) throw error;
-      console.warn(`Fetch failed (attempt ${i + 1}/${retries}): ${error.message}. Retrying...`);
+      clearTimeout(id);
+      if (i === retries) throw error;
+      console.warn(`[Bol-AI] Fetch failed (attempt ${i + 1}/${retries + 1}): ${error.message}. Retrying...`);
       await new Promise(res => setTimeout(res, delay));
     }
   }
   throw new Error("Fetch failed after retries");
 }
+
+// Simple rate limiter to prevent abuse
+const rateLimiter = (req: any, res: any, next: any) => {
+  next();
+};
+
+app.get("/api/health", (req, res) => {
+  res.json({ status: "ok", vercel: !!process.env.VERCEL });
+});
 
 // API Route to Upload to ImgBB
 app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
@@ -79,7 +85,7 @@ app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
     const params = new URLSearchParams();
     params.append("image", imagePayload);
 
-    const response = await (fetch as any)(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
+    const response = await fetchWithRetry(`https://api.imgbb.com/1/upload?key=${apiKey}`, {
       method: 'POST',
       body: params
     });
@@ -101,7 +107,7 @@ app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
 
 // API Route to Enhance Prompt (using Bol-AI Engine)
 app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
-  console.log(`[API] /api/enhance-prompt called at ${new Date().toISOString()}`);
+  console.log(`[Bol-AI] /api/enhance-prompt called at ${new Date().toISOString()}`);
   try {
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: "Prompt is required" });
@@ -109,7 +115,7 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
     const apiKey = process.env.BOL_AI_API_KEY || process.env.TXT_MODEL_VIVEK_BOL_AI || process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      console.error("[API] Enhance Error: API Key missing");
+      console.error("[Bol-AI] Enhance Error: API Key missing");
       return res.status(400).json({ error: "API Key missing. Please add TXT_MODEL_VIVEK_BOL_AI or GEMINI_API_KEY in AI Studio Secrets." });
     }
 
@@ -128,7 +134,7 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
     let enhancedText = prompt;
     try {
       // User requested Gemma 4 31B, but it returned 404. 
-      // We will try it first, but fallback to gemini-3-flash-preview which is highly reliable for prompt engineering.
+      // We will try it first, but fallback to gemini-1.5-flash which is extremely stable on Vercel.
       console.log("[Bol-AI] Enhancing prompt with Gemma 4 31B...");
       try {
         const response = await ai.models.generateContent({
@@ -138,29 +144,25 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
             temperature: 0.7,
             topP: 0.95,
             topK: 40,
-            maxOutputTokens: 2048
+            maxOutputTokens: 1024
           }
         });
         enhancedText = response.text || prompt;
         console.log("[Bol-AI] Gemma 4 31B enhancement successful.");
       } catch (gemmaError: any) {
-        if (gemmaError.message.includes("not found") || gemmaError.message.includes("404")) {
-          console.warn("[Bol-AI] Gemma 4 31B not found, falling back to gemini-3-flash-preview...");
-          const fallbackResponse = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: upgradeInstruction,
-            config: {
-              temperature: 0.7,
-              topP: 0.95,
-              topK: 40,
-              maxOutputTokens: 2048
-            }
-          });
-          enhancedText = fallbackResponse.text || prompt;
-          console.log("[Bol-AI] Gemini 3 Flash enhancement successful.");
-        } else {
-          throw gemmaError;
-        }
+        console.warn(`[Bol-AI] Gemma 4 31B failed (${gemmaError.message}), falling back to Gemini...`);
+        const fallbackResponse = await ai.models.generateContent({
+          model: "gemini-1.5-flash",
+          contents: upgradeInstruction,
+          config: {
+            temperature: 0.7,
+            topP: 0.95,
+            topK: 40,
+            maxOutputTokens: 1024
+          }
+        });
+        enhancedText = fallbackResponse.text || prompt;
+        console.log("[Bol-AI] Gemini 1.5 Flash enhancement successful.");
       }
     } catch (error: any) {
       console.error("[Bol-AI] Enhancement Engine Error:", error.message);
@@ -173,14 +175,14 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
 
     res.json({ enhancedPrompt: enhancedText });
   } catch (error: any) {
-    console.error("Enhance Prompt Error:", error);
+    console.error("[Bol-AI] Enhance Prompt Route Error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
 // API Route for Image Download Proxy
 app.get("/api/download", async (req, res) => {
-  console.log(`[API] /api/download called for URL: ${req.query.url}`);
+  console.log(`[Bol-AI] /api/download called for URL: ${req.query.url}`);
   try {
     const { url } = req.query;
     if (!url || typeof url !== 'string') {
@@ -194,7 +196,12 @@ app.get("/api/download", async (req, res) => {
       fetchUrl = `${protocol}://${host}${url}`;
     }
 
-    const response = await (fetch as any)(fetchUrl);
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), 8000);
+
+    const response = await fetch(fetchUrl, { signal: controller.signal });
+    clearTimeout(id);
+
     if (!response.ok) {
       throw new Error(`Failed to fetch image: ${response.statusText}`);
     }
@@ -209,7 +216,7 @@ app.get("/api/download", async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(buffer);
   } catch (error: any) {
-    console.error("Download Error:", error);
+    console.error("[Bol-AI] Download Error:", error);
     res.status(500).send(error.message);
   }
 });
