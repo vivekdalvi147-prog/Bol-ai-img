@@ -133,9 +133,9 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
 
     let enhancedText = prompt;
     try {
-      console.log("[Bol-AI] Enhancing prompt with Bol-AI Engine (Gemini 3.1 Pro)...");
+      console.log("[Bol-AI] Enhancing prompt with Bol-AI Engine (Gemma 3 27B IT)...");
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-pro-preview",
+        model: "gemma-3-27b-it",
         contents: upgradeInstruction,
         config: {
           temperature: 0.7,
@@ -146,20 +146,17 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
       });
       enhancedText = response.text || prompt;
       console.log("[Bol-AI] Prompt enhancement successful.");
+      
+      if (enhancedText.length > 2000) {
+        enhancedText = enhancedText.substring(0, 2000);
+      }
+
+      res.json({ enhancedPrompt: enhancedText });
     } catch (error: any) {
       console.error("[Bol-AI] Enhancement Error:", error.message);
-      // If the enhancement fails, we return the original prompt to avoid a total crash,
-      // but we log the error for debugging.
-      enhancedText = prompt;
-      // We don't throw here, we just return the original prompt so the user can still generate an image.
-      // But we will return a flag so the frontend knows it failed.
+      // Return the error to the frontend so it can show a toast and gracefully fallback
+      return res.status(500).json({ error: `Bol-AI Engine Error: ${error.message}` });
     }
-
-    if (enhancedText.length > 2000) {
-      enhancedText = enhancedText.substring(0, 2000);
-    }
-
-    res.json({ enhancedPrompt: enhancedText });
   } catch (error: any) {
     console.error("[Bol-AI] Enhance Prompt Route Error:", error);
     res.status(500).json({ error: error.message });
