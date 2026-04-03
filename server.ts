@@ -133,9 +133,9 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
 
     let enhancedText = prompt;
     try {
-      console.log("[Bol-AI] Enhancing prompt with Bol-AI Engine (Gemini 1.5 Pro)...");
+      console.log("[Bol-AI] Enhancing prompt with Bol-AI Engine (Gemini 3.1 Pro)...");
       const response = await ai.models.generateContent({
-        model: "gemini-1.5-pro",
+        model: "gemini-3.1-pro-preview",
         contents: upgradeInstruction,
         config: {
           temperature: 0.7,
