@@ -1,7 +1,7 @@
 import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 
 console.log(`[Bol-AI] Server initializing at ${new Date().toISOString()}`);
 
@@ -112,13 +112,16 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
     const { prompt } = req.body;
     if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
-    const apiKey = process.env.BOL_AI_API_KEY || process.env.TXT_MODEL_VIVEK_BOL_AI || process.env.GEMINI_API_KEY;
+    const rawApiKey = process.env.BOL_AI_API_KEY || process.env.TXT_MODEL_VIVEK_BOL_AI || process.env.GEMINI_API_KEY;
 
-    if (!apiKey) {
-      console.error("[Bol-AI] Enhance Error: API Key missing");
-      return res.status(400).json({ error: "API Key missing. Please add TXT_MODEL_VIVEK_BOL_AI or GEMINI_API_KEY in AI Studio Secrets." });
+    if (!rawApiKey || rawApiKey.includes('TODO') || rawApiKey.length < 10) {
+      console.error("[Bol-AI] Enhance Error: Invalid API Key configuration");
+      return res.status(400).json({ 
+        error: "API Key is missing or invalid. Please add GEMINI_API_KEY in AI Studio Secrets." 
+      });
     }
 
+    const apiKey = rawApiKey.trim();
     const ai = new GoogleGenAI({ apiKey });
     
     const upgradeInstruction = `You are BOL-AI, a master image prompt engineer. Transform this basic idea into a legendary, hyper-detailed, and visually breathtaking image generation prompt.
@@ -159,6 +162,71 @@ app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
     }
   } catch (error: any) {
     console.error("[Bol-AI] Enhance Prompt Route Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API Route for Text AI Chat
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { message, model, systemInstruction, history } = req.body;
+    
+    // Prioritize BOL_AI_API_KEY, fallback to GEMINI_API_KEY
+    const rawApiKey = process.env.BOL_AI_API_KEY || process.env.GEMINI_API_KEY || process.env.TXT_MODEL_VIVEK_BOL_AI;
+    
+    // Validate API Key
+    if (!rawApiKey || rawApiKey.includes('TODO') || rawApiKey.length < 10) {
+      console.error("[Bol-AI] Chat Error: Invalid API Key configuration");
+      return res.status(400).json({ 
+        error: "Gemini API Key is missing or invalid. Please add GEMINI_API_KEY in AI Studio Secrets." 
+      });
+    }
+
+    const apiKey = rawApiKey.trim();
+    const ai = new GoogleGenAI({ apiKey });
+    
+    // Format history for Gemini
+    const contents = [];
+    if (history && Array.isArray(history)) {
+      for (const msg of history) {
+        contents.push({
+          role: msg.role === 'assistant' ? 'model' : 'user',
+          parts: msg.parts
+        });
+      }
+    }
+    
+    contents.push({
+      role: 'user',
+      parts: [{ text: message }]
+    });
+
+    const response = await ai.models.generateContent({
+      model: model || 'gemini-3.1-flash-lite-preview',
+      contents: contents,
+      config: {
+        systemInstruction: systemInstruction || "You are Bol-AI, a helpful assistant.",
+        // Enable thinking if supported by the model (Gemini 3 series)
+        // Only use HIGH for pro models, use default for others
+        thinkingConfig: model?.includes('pro') ? { thinkingLevel: ThinkingLevel.HIGH } : undefined,
+      }
+    });
+
+    let text = response.text;
+    
+    // Try to extract thinking if available
+    let thinking = null;
+    if (response.candidates && response.candidates[0] && response.candidates[0].content && response.candidates[0].content.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if ((part as any).thought) {
+          thinking = (part as any).thought;
+        }
+      }
+    }
+
+    res.json({ text, thinking });
+  } catch (error: any) {
+    console.error("[Bol-AI] Chat Error:", error);
     res.status(500).json({ error: error.message });
   }
 });

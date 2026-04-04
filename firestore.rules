@@ -52,5 +52,13 @@ service cloud.firestore {
       // Only admin can write examples
       allow write: if isAdmin();
     }
+    
+    match /ai_models/{docId} {
+      // Anyone can read available models
+      allow read: if true;
+      
+      // Only admin can manage models
+      allow write: if isAdmin();
+    }
   }
 }

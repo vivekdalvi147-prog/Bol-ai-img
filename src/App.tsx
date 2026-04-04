@@ -9,6 +9,8 @@ import { Sparkles, Image as ImageIcon, Download, Send, Loader2, Info, LayoutGrid
 import { auth, googleProvider, db } from './lib/firebase';
 import { signInWithPopup, signOut, onAuthStateChanged, User } from 'firebase/auth';
 import { collection, addDoc, serverTimestamp, query, where, getDocs, deleteDoc, doc, getDoc, orderBy, setDoc, updateDoc, onSnapshot } from 'firebase/firestore';
+import TextAI from './components/TextAI';
+import AdminPanel from './components/AdminPanel';
 
 // Add your example image URLs here! You can use local paths or full URLs.
 const EXAMPLE_IMAGES = [
@@ -24,6 +26,7 @@ const EXAMPLE_IMAGES = [
 export default function App() {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generationTime, setGenerationTime] = useState(0);
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [lastGeneratedId, setLastGeneratedId] = useState<string | null>(null);
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
@@ -47,7 +50,7 @@ export default function App() {
   const [isLoginSliderOpen, setIsLoginSliderOpen] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'generator' | 'gallery' | 'my-creations'>('generator');
+  const [activeTab, setActiveTab] = useState<'generator' | 'gallery' | 'my-creations' | 'text-ai' | 'admin'>('generator');
   const [myImages, setMyImages] = useState<any[]>([]);
   const [sharedImage, setSharedImage] = useState<any>(null);
   const [maintenanceMode, setMaintenanceMode] = useState(0); // 0: Off, 1: Full, 2: Soft
@@ -222,6 +225,42 @@ export default function App() {
     }
   };
 
+  const addWatermark = async (base64Image: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "Anonymous";
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(base64Image);
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        
+        // Add watermark
+        ctx.font = `bold ${Math.max(20, img.width / 25)}px Inter, sans-serif`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'bottom';
+        
+        // Add a slight shadow for better visibility
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+        ctx.shadowBlur = 4;
+        ctx.shadowOffsetX = 2;
+        ctx.shadowOffsetY = 2;
+        
+        ctx.fillText('Bol-Ai', img.width - 20, img.height - 20);
+        
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      };
+      img.onerror = reject;
+      img.src = base64Image.startsWith('data:') ? base64Image : `data:image/jpeg;base64,${base64Image}`;
+    });
+  };
+
   const handleDownload = async (url: string) => {
     try {
       const downloadUrl = `/api/download?url=${encodeURIComponent(url)}`;
@@ -241,6 +280,19 @@ export default function App() {
       window.open(url, '_blank');
     }
   };
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isGenerating) {
+      setGenerationTime(0);
+      interval = setInterval(() => {
+        setGenerationTime(prev => prev + 1);
+      }, 1000);
+    } else {
+      setGenerationTime(0);
+    }
+    return () => clearInterval(interval);
+  }, [isGenerating]);
 
   const UI_DESIGN_PROMPT_PREFIX = "Professional UI/UX design, high-quality user interface, modern web layout, clean digital components, sleek app design, 4k resolution, highly detailed, professional color palette, ";
 
@@ -389,7 +441,7 @@ export default function App() {
       // Poll for status
       let isComplete = false;
       let attempts = 0;
-      const maxAttempts = 90; // 90 * 2s = 180 seconds (3 minutes)
+      const maxAttempts = 150; // 150 * 2s = 300 seconds (5 minutes)
 
       while (!isComplete && attempts < maxAttempts) {
         await new Promise(resolve => setTimeout(resolve, 2000));
@@ -417,7 +469,8 @@ export default function App() {
             let finalDisplayUrl = finalImageUrl;
             try {
               const base64DataWithPrefix = await fetchAsBase64(finalImageUrl);
-              const base64Data = base64DataWithPrefix.includes(',') ? base64DataWithPrefix.split(',')[1] : base64DataWithPrefix;
+              const watermarkedBase64 = await addWatermark(base64DataWithPrefix);
+              const base64Data = watermarkedBase64.includes(',') ? watermarkedBase64.split(',')[1] : watermarkedBase64;
 
               if (base64Data) {
                 const imgbbRes = await fetch('/api/upload-imgbb', {
@@ -487,7 +540,7 @@ export default function App() {
       }
 
       if (!isComplete) {
-        throw new Error("Generation Timeout (3m). Please try again.");
+        throw new Error("Generation Timeout (5m). Please try again.");
       }
 
     } catch (err: any) {
@@ -534,6 +587,7 @@ export default function App() {
         <div className="flex items-center gap-4 md:gap-8">
           <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-white/60">
             <button onClick={() => { setActiveTab('generator'); setActivePage('home'); }} className={`transition-colors ${activeTab === 'generator' && activePage === 'home' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>Generator</button>
+            <button onClick={() => { setActiveTab('text-ai'); setActivePage('home'); }} className={`transition-colors ${activeTab === 'text-ai' && activePage === 'home' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>Text AI</button>
             <button onClick={() => { setActiveTab('gallery'); setActivePage('home'); }} className={`transition-colors ${activeTab === 'gallery' && activePage === 'home' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>Gallery</button>
             {user && (
               <button onClick={() => { setActiveTab('my-creations'); setActivePage('home'); }} className={`transition-colors ${activeTab === 'my-creations' && activePage === 'home' ? 'text-neon-blue' : 'hover:text-neon-blue'}`}>My Creations</button>
@@ -570,27 +624,125 @@ export default function App() {
       <main className="container mx-auto px-6 pt-12 pb-24">
         {activePage === 'home' ? (
           <>
-            <div className="max-w-4xl mx-auto text-center mb-16">
-              <motion.h2 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="text-5xl md:text-7xl font-display font-bold mb-6 leading-tight"
-              >
-                Create Amazing <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Images</span> With <br /> AI
-              </motion.h2>
-              <motion.p 
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="text-white/50 text-lg max-w-2xl mx-auto"
-              >
-                Type what you want to see, and our advanced AI will create it for you instantly.
-              </motion.p>
-            </div>
+            {/* Admin Section */}
+            {activeTab === 'admin' && user?.email === 'vivekdalvi147@gmail.com' && (
+              <>
+                <div className="max-w-4xl mx-auto text-center mb-16">
+                  <motion.h2 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-4xl md:text-6xl font-display font-bold mb-6 leading-tight"
+                  >
+                    Admin <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Control</span> Center
+                  </motion.h2>
+                </div>
+                <AdminPanel />
+              </>
+            )}
+
+            {/* Text AI Section */}
+            {activeTab === 'text-ai' && (
+              <>
+                <div className="max-w-4xl mx-auto text-center mb-12">
+                  <motion.h2 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-4xl md:text-6xl font-display font-bold mb-4 leading-tight"
+                  >
+                    Bol-AI <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Intelligence</span>
+                  </motion.h2>
+                  <motion.p 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="text-white/50 text-lg max-w-2xl mx-auto mb-8"
+                  >
+                    Chat with our most advanced text models for coding, creative writing, and problem solving.
+                  </motion.p>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="flex flex-wrap justify-center gap-4 mb-12"
+                  >
+                    <button 
+                      onClick={() => setActiveTab('generator')}
+                      className={`px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 ${
+                        activeTab === 'generator' 
+                          ? 'bg-neon-blue text-black shadow-[0_0_20px_rgba(0,255,255,0.4)]' 
+                          : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
+                      }`}
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      <span>Image Gen</span>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('text-ai')}
+                      className={`px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 ${
+                        activeTab === 'text-ai' 
+                          ? 'bg-neon-purple text-white shadow-[0_0_20px_rgba(176,38,255,0.4)]' 
+                          : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
+                      }`}
+                    >
+                      <Cpu className="w-4 h-4" />
+                      <span>Text AI Chat</span>
+                    </button>
+                  </motion.div>
+                </div>
+                <TextAI />
+              </>
+            )}
 
             {/* Generator Section */}
             {activeTab === 'generator' && (
-              <div className="max-w-4xl mx-auto mb-24">
+              <>
+                <div className="max-w-4xl mx-auto text-center mb-16">
+                  <motion.h2 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-5xl md:text-7xl font-display font-bold mb-6 leading-tight"
+                  >
+                    Create Amazing <span className="text-transparent bg-clip-text bg-gradient-to-r from-neon-blue to-neon-purple">Images</span> With <br /> AI
+                  </motion.h2>
+                  <motion.p 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="text-white/50 text-lg max-w-2xl mx-auto mb-8"
+                  >
+                    Type what you want to see, and our advanced AI will create it for you instantly.
+                  </motion.p>
+                  <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.2 }}
+                    className="flex flex-wrap justify-center gap-4 mb-12"
+                  >
+                    <button 
+                      onClick={() => setActiveTab('generator')}
+                      className={`px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 ${
+                        activeTab === 'generator' 
+                          ? 'bg-neon-blue text-black shadow-[0_0_20px_rgba(0,255,255,0.4)]' 
+                          : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
+                      }`}
+                    >
+                      <ImageIcon className="w-4 h-4" />
+                      <span>Image Gen</span>
+                    </button>
+                    <button 
+                      onClick={() => setActiveTab('text-ai')}
+                      className={`px-6 py-3 rounded-2xl font-bold transition-all flex items-center gap-2 ${
+                        activeTab === 'text-ai' 
+                          ? 'bg-neon-purple text-white shadow-[0_0_20px_rgba(176,38,255,0.4)]' 
+                          : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
+                      }`}
+                    >
+                      <Cpu className="w-4 h-4" />
+                      <span>Text AI Chat</span>
+                    </button>
+                  </motion.div>
+                </div>
+                <div className="max-w-4xl mx-auto mb-24">
           
           {/* Controls: Size Selector & Quality & Enhance Toggle */}
           <div className="flex flex-col gap-5 mb-8 max-w-md mx-auto">
@@ -792,7 +944,10 @@ export default function App() {
                 >
                   <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
                   {isGenerating ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      {generationTime}s
+                    </>
                   ) : (
                     <>
                       Generate
@@ -882,7 +1037,7 @@ export default function App() {
                         <div className="w-20 h-20 border-4 border-neon-blue/20 border-t-neon-blue rounded-full animate-spin" />
                         <Sparkles className="absolute inset-0 m-auto text-neon-blue w-8 h-8 animate-pulse" />
                       </div>
-                      <p className="text-neon-blue font-bold tracking-widest uppercase text-sm mt-2">Generating Masterpiece...</p>
+                      <p className="text-neon-blue font-bold tracking-widest uppercase text-sm mt-2">Generating Masterpiece... ({generationTime}s)</p>
                       
                       {/* Progress Bar */}
                       <div className="w-full max-w-xs bg-black/40 rounded-full h-1.5 mt-2 overflow-hidden border border-white/5">
@@ -958,6 +1113,7 @@ export default function App() {
             )}
           </AnimatePresence>
         </div>
+        </>
         )}
 
         {/* Gallery Section */}
@@ -1122,11 +1278,13 @@ export default function App() {
               <span className="font-display font-bold text-xl">BOL-<span className="text-neon-blue">AI</span></span>
             </div>
             <div className="flex flex-wrap justify-center gap-6 text-sm text-white/60">
+              <button onClick={() => { setActiveTab('generator'); setActivePage('home'); window.scrollTo(0, 0); }} className="hover:text-neon-blue transition-colors">Generator</button>
+              <button onClick={() => { setActiveTab('text-ai'); setActivePage('home'); window.scrollTo(0, 0); }} className="hover:text-neon-blue transition-colors">Text AI</button>
               <button onClick={() => { setActivePage('about'); window.scrollTo(0, 0); }} className="hover:text-neon-blue transition-colors">About Us</button>
               <button onClick={() => { setActivePage('privacy'); window.scrollTo(0, 0); }} className="hover:text-neon-purple transition-colors">Privacy Policy</button>
               <button onClick={() => { setActivePage('contact'); window.scrollTo(0, 0); }} className="hover:text-white transition-colors">Contact Us</button>
               {user?.email === 'vivekdalvi147@gmail.com' && (
-                <a href="/admin" target="_blank" className="hover:text-red-500 transition-colors">Admin</a>
+                <button onClick={() => { setActiveTab('admin'); setActivePage('home'); window.scrollTo(0, 0); }} className="hover:text-red-500 transition-colors">Admin</button>
               )}
             </div>
             <div className="flex flex-col items-center md:items-end gap-1">
@@ -1173,6 +1331,7 @@ export default function App() {
 
                 <nav className="flex flex-col gap-4 text-lg font-medium text-white/70 shrink-0">
                   <button onClick={() => { setActiveTab('generator'); setIsMenuOpen(false); }} className="text-left hover:text-neon-blue transition-colors py-2">Generator</button>
+                  <button onClick={() => { setActiveTab('text-ai'); setIsMenuOpen(false); }} className="text-left hover:text-neon-blue transition-colors py-2">Text AI</button>
                   <button onClick={() => { setActiveTab('gallery'); setIsMenuOpen(false); }} className="text-left hover:text-neon-blue transition-colors py-2">Gallery</button>
                   {user && (
                     <button onClick={() => { setActiveTab('my-creations'); setIsMenuOpen(false); }} className="text-left hover:text-neon-blue transition-colors py-2">My Creations</button>
