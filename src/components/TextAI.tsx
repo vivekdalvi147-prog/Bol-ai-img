@@ -116,7 +116,7 @@ export default function TextAI() {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [models, setModels] = useState<AIModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.1-flash-preview');
+  const [selectedModel, setSelectedModel] = useState<string>('gemini-3.1-flash-lite-preview');
   const [selectedFile, setSelectedFile] = useState<{ data: string, mimeType: string, name: string } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -124,8 +124,8 @@ export default function TextAI() {
 
   // Default model
   const defaultModel: AIModel = {
-    id: 'gemini-3.1-flash-preview',
-    name: 'Bol-AI (Flash)',
+    id: 'gemini-3.1-flash-lite-preview',
+    name: 'Bol-AI (Lite)',
     endpoint: '/api/chat',
     systemInstruction: `bol-ai v1.0 – Official Developer Profile, AI Identity, Vision & Platform Information (Vivek Vijay Dalvi)
 
