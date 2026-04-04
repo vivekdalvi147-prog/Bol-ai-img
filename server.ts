@@ -3,18 +3,6 @@ import path from "path";
 import { fileURLToPath } from "url";
 import "dotenv/config";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
-import { rateLimit } from 'express-rate-limit';
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import * as admin from 'firebase-admin';
-
-// Initialize Firebase Admin for server-side operations
-if (!admin.apps.length) {
-  initializeApp({
-    credential: admin.credential.applicationDefault()
-  });
-}
-const db = getFirestore();
 
 console.log(`[Bol-AI] Server initializing at ${new Date().toISOString()}`);
 
@@ -69,44 +57,17 @@ async function fetchWithRetry(url: string, options: any, retries = 1, delay = 50
   throw new Error("Fetch failed after retries");
 }
 
-// Rate limiter configuration
-let currentRateLimit = 10; // Default
-async function refreshRateLimit() {
-  try {
-    const doc = await db.collection('settings').doc('general').get();
-    if (doc.exists) {
-      const data = doc.data();
-      if (data?.rateLimit) currentRateLimit = data.rateLimit;
-    }
-  } catch (err) {
-    console.error("[Bol-AI] Failed to refresh rate limit:", err);
-  }
-}
-refreshRateLimit();
-setInterval(refreshRateLimit, 60000);
-
-const limiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: () => currentRateLimit,
-  message: { error: "Server Error: Rate limit exceeded" },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-app.use(limiter);
-
-// Global Error Handler
-app.use((err: any, req: any, res: any, next: any) => {
-  console.error("[Bol-AI] Global Error:", err);
-  res.status(500).json({ error: "Server Error: Something went wrong" });
-});
+// Simple rate limiter to prevent abuse
+const rateLimiter = (req: any, res: any, next: any) => {
+  next();
+};
 
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", vercel: !!process.env.VERCEL });
 });
 
 // API Route to Upload to ImgBB
-app.post("/api/upload-imgbb", async (req, res) => {
+app.post("/api/upload-imgbb", rateLimiter, async (req, res) => {
   try {
     const { imageUrl } = req.body;
     const apiKey = process.env.IMG_VIVEKAPP_AI;
@@ -148,7 +109,7 @@ app.post("/api/upload-imgbb", async (req, res) => {
 });
 
 // API Route to Enhance Prompt (using Bol-AI Engine)
-app.post("/api/enhance-prompt", async (req, res) => {
+app.post("/api/enhance-prompt", rateLimiter, async (req, res) => {
   console.log(`[Bol-AI] /api/enhance-prompt called at ${new Date().toISOString()}`);
   try {
     const { prompt } = req.body;
@@ -355,7 +316,7 @@ app.get("/api/download", async (req, res) => {
 });
 
 // API Route for Image Generation (Start Task)
-app.post("/api/generate", async (req, res) => {
+app.post("/api/generate", rateLimiter, async (req, res) => {
   console.log(`[Bol-AI] /api/generate called at ${new Date().toISOString()}`);
   try {
     const { prompt, size } = req.body;
@@ -459,7 +420,7 @@ app.get("/api/tasks/:taskId", async (req, res) => {
   }
 });
 
-app.get("/api/admin/health", async (req, res) => {
+app.get("/api/admin/health", rateLimiter, async (req, res) => {
   res.json({
     gemini: !!process.env.GEMINI_API_KEY,
     modelscope: !!process.env.VIVEK_AI_BOL_IMG,

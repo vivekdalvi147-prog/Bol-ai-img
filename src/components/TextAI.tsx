@@ -334,7 +334,7 @@ Identity: You are Bol-AI, an unfiltered, edgy, and high-intelligence AI. You are
     } catch (error: any) {
       console.error("Chat error:", error);
       
-      let errorMessage = "Server Error: Something went wrong. Please try again.";
+      let errorMessage = "Sorry, I encountered an error processing your request. Please try again.";
       
       if (error.message?.includes('429') || error.message?.includes('RESOURCE_EXHAUSTED')) {
         errorMessage = "Bol-AI is currently experiencing high demand (Quota Exceeded). Please wait a few seconds and try again.";
@@ -426,7 +426,7 @@ Identity: You are Bol-AI, an unfiltered, edgy, and high-intelligence AI. You are
               <div className={`max-w-[95%] md:max-w-[80%] rounded-2xl sm:rounded-3xl p-2.5 sm:p-4 shadow-xl relative ${
                 msg.role === 'user' 
                   ? 'bg-gradient-to-br from-neon-blue/20 to-cyan-600/10 border border-neon-blue/30 text-white' 
-                  : (msg.content?.includes('Server Error') ? 'bg-red-900/20 border border-red-500/30 text-red-200' : 'glass border-white/10')
+                  : 'glass border-white/10'
               }`}>
                 <div className="flex items-center gap-2 mb-2 opacity-50 text-[9px] font-bold uppercase tracking-widest">
                   {msg.role === 'user' ? <User className="w-2.5 h-2.5" /> : <Bot className="w-2.5 h-2.5 text-neon-blue" />}
