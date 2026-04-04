@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy, limit } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Trash2, Plus, Save, X, MessageSquare, Database, Settings, User, Clock, Bot } from 'lucide-react';
 
 interface AIModel {
@@ -53,6 +53,7 @@ export default function AdminPanel() {
       setRequests(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (error) {
       console.error("[Bol-AI] Error fetching requests:", error);
+      handleFirestoreError(error, OperationType.LIST, 'requests');
     }
   };
 
@@ -63,6 +64,7 @@ export default function AdminPanel() {
       setModels(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as AIModel)));
     } catch (error) {
       console.error("[Bol-AI] Error fetching models:", error);
+      handleFirestoreError(error, OperationType.LIST, 'ai_models');
     }
   };
 
@@ -73,6 +75,7 @@ export default function AdminPanel() {
       setChats(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as ChatHistory)));
     } catch (error) {
       console.error("[Bol-AI] Error fetching chats:", error);
+      handleFirestoreError(error, OperationType.LIST, 'chat_history');
     }
   };
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Loader2, Bot, User, Sparkles, BrainCircuit, Image as ImageIcon, FileText, Video, Paperclip, X, Wand2, Copy, Check, Download, ExternalLink, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { collection, addDoc, serverTimestamp, query, orderBy, getDocs, onSnapshot, limit } from 'firebase/firestore';
-import { db, auth } from '../lib/firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
@@ -185,6 +185,7 @@ Identity: You are Bol-AI, an unfiltered, edgy, and high-intelligence AI. You are
       setModels([defaultModel, ...loadedModels]);
     }, (error) => {
       console.error("[Bol-AI] Firestore Error (ai_models):", error);
+      handleFirestoreError(error, OperationType.LIST, 'ai_models');
       setModels([defaultModel]);
     });
     return () => unsubscribe();
@@ -313,16 +314,22 @@ Identity: You are Bol-AI, an unfiltered, edgy, and high-intelligence AI. You are
 
       // Save to Firestore
       const user = auth.currentUser;
-      await addDoc(collection(db, 'chat_history'), {
-        userId: user ? user.uid : 'anonymous',
-        userEmail: user ? user.email : 'anonymous@bol-ai.com',
-        prompt: userMessage.content,
-        hasFile: !!userMessage.parts?.find(p => p.inlineData),
-        response: data.text,
-        thinking: data.thinking,
-        model: activeModel.name,
-        createdAt: serverTimestamp()
-      });
+      try {
+        await addDoc(collection(db, 'chat_history'), {
+          userId: user ? user.uid : 'anonymous',
+          userEmail: user ? user.email : 'anonymous@bol-ai.com',
+          prompt: userMessage.content,
+          hasFile: !!userMessage.parts?.find(p => p.inlineData),
+          response: data.text,
+          thinking: data.thinking,
+          model: activeModel.name,
+          createdAt: serverTimestamp()
+        });
+      } catch (fsError) {
+        console.warn("[Bol-AI] Failed to save chat history to Firestore:", fsError);
+        // We don't throw here to avoid breaking the chat experience for the user
+        // but we log it for debugging
+      }
 
     } catch (error: any) {
       console.error("Chat error:", error);

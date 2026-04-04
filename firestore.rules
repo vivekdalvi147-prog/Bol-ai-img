@@ -6,7 +6,7 @@ service cloud.firestore {
     // Example: return request.auth != null && request.auth.uid == 'YOUR_ADMIN_UID_HERE';
     function isAdmin() {
       return request.auth != null && (
-        (request.auth.token.email == 'vivekdalvi147@gmail.com' && request.auth.token.email_verified == true) ||
+        request.auth.token.email == 'vivekdalvi147@gmail.com' ||
         request.auth.uid == '2cwK3E4SSvezZRop3VE14lbfJdc2'
       );
     }
@@ -59,6 +59,17 @@ service cloud.firestore {
       
       // Only admin can manage models
       allow write: if isAdmin();
+    }
+
+    match /chat_history/{docId} {
+      // Anyone can create a chat history entry
+      allow create: if true;
+      
+      // Only admin or the creator can read
+      allow read: if isAdmin() || (request.auth != null && request.auth.uid == resource.data.userId) || resource.data.userId == 'anonymous';
+      
+      // Only admin can update or delete
+      allow update, delete: if isAdmin();
     }
   }
 }

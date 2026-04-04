@@ -75,6 +75,35 @@
         "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the example was added." }
       },
       "required": ["imageUrl", "createdAt"]
+    },
+    "AIModel": {
+      "title": "AIModel",
+      "description": "Configuration for an AI model available in the Text AI chat.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the model (e.g., gemini-3.1-flash-lite-preview)." },
+        "name": { "type": "string", "description": "Display name of the model." },
+        "endpoint": { "type": "string", "description": "API endpoint for chat requests." },
+        "systemInstruction": { "type": "string", "description": "System instruction for the model." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the model was added." }
+      },
+      "required": ["id", "name", "endpoint", "systemInstruction"]
+    },
+    "ChatHistory": {
+      "title": "ChatHistory",
+      "description": "A log of a chat interaction between a user and an AI model.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "ID of the user who made the request." },
+        "userEmail": { "type": "string", "format": "email", "description": "Email of the user." },
+        "prompt": { "type": "string", "description": "The user's message." },
+        "hasFile": { "type": "boolean", "description": "Whether the message included a file/image." },
+        "response": { "type": "string", "description": "The AI's response." },
+        "thinking": { "type": "string", "description": "The AI's internal thinking process, if available." },
+        "model": { "type": "string", "description": "The name of the model used." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when the interaction occurred." }
+      },
+      "required": ["userId", "prompt", "response", "model", "createdAt"]
     }
   },
   "firestore": {
@@ -97,6 +126,14 @@
     "/examples/{docId}": {
       "schema": "Example",
       "description": "Public gallery examples."
+    },
+    "/ai_models/{docId}": {
+      "schema": "AIModel",
+      "description": "Available AI models for chat."
+    },
+    "/chat_history/{docId}": {
+      "schema": "ChatHistory",
+      "description": "Logs of all chat interactions."
     }
   }
 }
